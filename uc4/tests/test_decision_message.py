@@ -168,9 +168,9 @@ def test_after_the_decision_the_tab_shows_what_was_sent_and_links_to_communicati
     page = render.case_detail(conn, case_id, tab="Decision")
     assert m["communication_id"] in page and "TPL-0007" in page
     assert communication.DELIVERY_LABEL in page and " UTC" in page
-    assert ('<a href="/case/' + case_id + '?tab=Communications">' + render.SEE_ALL + "</a>"
-            ) in page
-    # The Communications tab is still the full history, follow-up panel first.
+    assert ('<a href="/case/' + case_id + '?tab=Decision-messages#messages">'
+            + render.SEE_ALL + "</a>") in page
+    # Message history is still the full history, follow-up panel first.
     comms = render.case_detail(conn, case_id, tab="Communications")
     assert "Customer follow-up" in comms and m["communication_id"] in comms
 
@@ -183,5 +183,5 @@ def test_the_preview_shows_one_block_per_decision_for_the_script_to_choose(fresh
     assert 'select name="choice" data-previews' in page
     for choice in options:
         assert f'data-preview-for="{choice}"' in page
-    assert "hidden" not in page.split('id="customer-message"')[1], \
-        "every block is visible without the script"
+    preview = page.split('id="customer-message"')[1].split("</section>")[0]
+    assert "hidden" not in preview, "every block is visible without the script"

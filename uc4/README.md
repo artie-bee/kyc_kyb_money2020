@@ -559,10 +559,14 @@ fill their declared placeholders; it writes no sentences. Three gates:
   3. the rendered text is scanned for restricted wording before any send, and a
      hit blocks it and is audited. A send writes to the outbox table; no mail
      leaves this POC.
-The console's Decision tab previews, for the selected decision, the customer
+The console's "Decision & messages" tab (the former Decision and Communications
+tabs; old ?tab=Decision / ?tab=Communications links redirect to its #decision /
+#messages section) runs: Customer follow-up, then the decision with the
+customer-message preview beside the form, then Message history with Send a
+message. The preview shows, for the selected decision, the customer
 message it would trigger (decision.preview_customer_message: the same template
 choice, rendering and wording scan as the real send, storing nothing), and after
-the decision shows what was sent with a link to the Communications tab. On a
+the decision the tab shows what was sent, linking to Message history. On a
 confirmed sanctions match the decision sends nothing - a compliance task is
 raised - and compliance approves the message separately with the existing
 Send-a-message action, so human_decision_recorded and
@@ -584,7 +588,13 @@ remaining blocker. Reminders stop when nothing is owed any more
 unreadable uploads) or the case is closed. A re-upload re-runs Step 3 for that
 checklist item only.
 
-Customer follow-up (console, Communications tab) shows per request: the items
+The console sidebar's "Customer" card (every case screen, never the portal)
+shows the latest message to the customer - subject, snippet, draft / awaiting
+compliance approval / sent, time in UTC, simulated delivery - and the case
+state ("Open - waiting on ..." or "Closed - ..." with its date), derived by
+data.customer_summary from the existing records.
+
+Customer follow-up (console, Decision & messages tab) shows per request: the items
 asked for, when it was sent, delivery as "Simulated - sent to demo outbox"
 (never "delivered"), when the customer viewed it, the next reminder due, the
 reminders since and a status (Awaiting customer / Reminder sent / Completed /

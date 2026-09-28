@@ -171,7 +171,7 @@ def test_the_decision_tab_offers_only_what_the_band_allows(site):
     Case 6 is critical, where approve and conditional_approve are not allowed,
     so neither may appear as an option to attempt.
     """
-    _, html = get(site, "/case/WAL-ONB-0006?tab=Decision")
+    _, html = get(site, "/case/WAL-ONB-0006?tab=Decision-messages")
     options = re.findall(r'<option value="([a-z_]+)"', html)
     assert options, "some decision must be offered"
     assert "approve" not in options and "conditional_approve" not in options
@@ -181,7 +181,7 @@ def test_the_decision_tab_offers_only_what_the_band_allows(site):
 def test_the_next_steps_name_the_role_a_decision_needs(site):
     """Escalate is compliance's at critical. The analyst is told before trying."""
     post(site, "/action/settings", role="analyst", reviewer="analyst.demo", back="/")
-    _, html = get(site, "/case/WAL-ONB-0006?tab=Decision")
+    _, html = get(site, "/case/WAL-ONB-0006?tab=Decision-messages")
     block = re.search(r'<div class="nextsteps">.*?</ol>', html, re.S)
     assert block, "the derived next steps must be on the decision tab"
     text = re.sub("<[^>]+>", " ", block.group(0))
@@ -244,7 +244,7 @@ def test_a_role_the_taxonomy_allows_is_accepted(site):
                             back="/case/WAL-ONB-0006?tab=Decision")
     kind, text = flash(location)
     assert kind == "ok" and "escalate" in text
-    _, html = get(site, "/case/WAL-ONB-0006?tab=Decision")
+    _, html = get(site, "/case/WAL-ONB-0006?tab=Decision-messages")
     assert "compliance.demo" in html
 
 
@@ -281,7 +281,7 @@ def test_an_action_without_a_reason_is_refused(site):
 def test_the_decision_form_carries_the_role(site):
     """The role lives on the decision form, not the sidebar: it is checked when
     a decision is recorded, and that is the moment it matters."""
-    _, html = get(site, "/case/WAL-ONB-0006?tab=Decision")
+    _, html = get(site, "/case/WAL-ONB-0006?tab=Decision-messages")
     form = html.split('action="/action/record-decision"', 1)[1]
     assert '<option value="analyst"' in form
     assert '<option value="compliance"' in form
@@ -292,12 +292,12 @@ def test_who_you_are_acting_as_sticks_after_a_decision(site):
     """Whatever the form carried is remembered for the next request, so a
     refusal on the role does not also lose what was typed."""
     post(site, "/action/settings", role="compliance", reviewer="ines.b", back="/")
-    _, html = get(site, "/case/WAL-ONB-0001?tab=Decision")
+    _, html = get(site, "/case/WAL-ONB-0001?tab=Decision-messages")
     assert '<option value="compliance" selected' in html
     assert 'value="ines.b"' in html
 
     post(site, "/action/settings", role="analyst", reviewer="analyst.demo", back="/")
-    _, html = get(site, "/case/WAL-ONB-0001?tab=Decision")
+    _, html = get(site, "/case/WAL-ONB-0001?tab=Decision-messages")
     assert '<option value="analyst" selected' in html
 
 
@@ -321,7 +321,7 @@ def test_the_role_chosen_on_the_form_is_the_one_enforced(site):
                        role="compliance", reviewer="k.ohtla", back=back)
     kind, text = flash(location)
     assert kind == "ok" and "escalate" in text
-    _, html = get(site, back)
+    _, html = get(site, "/case/WAL-ONB-0006?tab=Decision-messages")
     assert "k.ohtla" in html and "compliance" in html
 
 

@@ -53,8 +53,9 @@ Be precise here. This POC is a standalone build that *represents* the reuse spli
 2. **Documents tab:** every document is accepted, with no flags. Extracted fields all show high confidence.
 3. **Checks tab:** identity pass; sanctions, PEP and adverse media all clear.
 4. **Risk tab:** band **low**, score **0**. No risk factors fired at all: the table reads *No factors fired.* Point out the recommended action is *approve*, but a person still has to make the decision.
-5. **Decision tab:** as **analyst**, record **approve** with a reason.
-6. **Customer view:** show the approval message the applicant receives.
+5. **Decision & messages tab:** as **analyst**, record **approve** with a reason. Beside the form, the **Customer message** preview shows the approval notice before you record it.
+6. **Sidebar:** under the case selector, the **Customer** card now reads *Approval notification* — *sent*, the time in UTC, *Simulated - sent to demo outbox* — and the case state *Closed - approved* with today's date. Click the message to jump to **Message history**.
+7. **Customer view:** show the approval message the applicant receives.
 
 **What to say:** "Even the cleanest case ends with a human decision. The POC doesn't assume low-risk auto-approval, because that's a Wallester policy decision, not ours."
 
@@ -70,7 +71,7 @@ Be precise here. This POC is a standalone build that *represents* the reuse spli
 2. **Documents tab:** open the director ID preview. The audience can see it's genuinely unreadable. The verdict shows the flag *blurred / unreadable*.
 3. **Checklist:** the UBO declaration item is still *pending*.
 4. **Checks tab:** it's **empty**. Pause here; this is the key moment.
-5. **Communications tab:** nothing has been drafted yet. Under **Send a message**, choose situation `resubmission` and click **Draft and approve as me**. The request appears and names exactly what's missing, in plain language: *ubo declaration, id document*.
+5. **Decision & messages tab:** scroll to **Message history** — nothing has been drafted yet, and the sidebar's **Customer** card says *No messages yet*. Under **Send a message**, choose situation `resubmission` and click **Draft and approve as me**. The request appears and names exactly what's missing, in plain language: *ubo declaration, id document for Denton Halliwell*.
 6. **Customer view:** the applicant sees a clear status and knows exactly what to do next.
 7. **Portal** (optional, http://127.0.0.1:8701/demo): **Open as this customer** next to *Northbridge Craft Supplies Ltd*. The **Next step** card at the top reads *"Upload a clearer copy: Identity document (passport or ID card) - Denton Halliwell"*, with the upload control right there. On **Documents needed**, point at the three tips under the ID row before anything is uploaded: *not expired*, *flat in good light with every corner visible*, *no glare*.
 
@@ -138,9 +139,9 @@ Both are synthetic specimens. Never upload a real document.
 
    Number: match. Address: **mismatch**. Because a human confirmed the reading first, the mismatch is a real conflict, not an OCR error.
 4. **Risk tab:** band **medium**, score **43**, with the address mismatch as a cited factor. Status: *ready for decision*.
-5. **Decision tab:** the recommendation is *conditional approve*. As **analyst**, choose **request more information**. Fill in **both** *Rationale* and *Override reason*: the decision differs from the recommendation, so the backend requires the second one.
+5. **Decision & messages tab:** the recommendation is *conditional approve*. As **analyst**, choose **request more information**. Fill in **both** *Rationale* and *Override reason*: the decision differs from the recommendation, so the backend requires the second one.
 6. Point out the decision is recorded as an override in the **stricter** direction.
-7. **Communications tab / Customer view:** the clarification request to the customer.
+7. **Message history** on the Decision & messages tab, or **Customer view:** the clarification request to the customer.
 
 **What to say:** "The system didn't trust a faint reading. It asked a person to confirm it before spending money on the registry check. Then every flag points to its evidence. And when the analyst chooses to be more cautious than the system, that's recorded too, as a stricter override, so compliance can see exactly where people and the system disagree."
 
@@ -184,9 +185,9 @@ Both are synthetic specimens. Never upload a real document.
 **Story:** a director returns a possible sanctions match. This is the most important scenario; slow down.
 
 1. Open Case 6. Status: **analyst review required**; band **critical** (the sanctions floor, not the score).
-2. **Decision tab, as analyst:** there is no **approve** to attempt. Open the **Decision** dropdown: at band `critical` it offers no approve or conditional approve — only what the taxonomy allows at this band. Then choose **escalate** and record it as **analyst**. The app shows the backend's refusal — *"analyst.demo is analyst, but the band is critical, so this decision is compliance's to take"*. Read it aloud.
+2. **Decision & messages tab, as analyst:** there is no **approve** to attempt. Point at the panel headed *Not offered at band `critical`*, which lists approve and conditional approve and the bands that do allow them; the **Decision** dropdown offers only what the taxonomy allows here. Then choose **escalate** and record it as **analyst**. The app shows the backend's refusal — *"analyst.demo is analyst, but the band is critical, so this decision is compliance's to take"*. Read it aloud.
 3. Set the role on the decision form to **compliance** and choose **escalate**. **Before recording**, scroll to **Customer message** under the form: it previews exactly what the customer would be sent — template `TPL-0004`, *"your application … is with our onboarding team for an additional manual review step"* — with the note *"Generic wording is used because this case has an internal finding."* Changing the decision changes the preview. Nothing is sent yet.
-4. Record **escalate**, with an escalation target and reason. The **Customer message** box at the top of the tab now shows what was sent: the message id, `TPL-0004`, the time in UTC and *Simulated - sent to demo outbox*, with **See all communications** linking to the Communications tab.
+4. Record **escalate**, with an escalation target and reason. The **Customer message** box at the top of the tab now shows what was sent: the message id, `TPL-0004`, the time in UTC and *Simulated - sent to demo outbox*, with **See all communications** jumping to **Message history** below. The sidebar's **Customer** card shows the same generic message — *Manual review underway*, *sent* — and *Open - waiting on …*.
 5. **Customer view:** that one generic message is everything the applicant has ever been sent. Nothing mentions sanctions, screening or matches.
 6. Optional: mention that the database itself blocks any attempt to change a sanctions match to "no match." Only a human decision can resolve it.
 
@@ -288,9 +289,9 @@ Both are synthetic specimens. Never upload a real document.
 
 ### Case 12 steps — confirmed sanctions match · WAL-ONB-0012 · 3 min
 
-1. Open Case 12 and the **Decision tab**, with the role on the form set to **compliance**. Choose **escalate**. The **Customer message** preview reads *"No automatic message. Compliance decides separately what the customer is told."* — for every decision offered.
-2. Record **escalate** with an escalation target and reason. **Nothing is sent.** The **Customer message** box at the top of the tab repeats *"No automatic message …"*, and the **Communications** tab shows a compliance task, *decide customer communication*.
-3. Compliance now approves the customer message as a **separate step**: on the Decision tab click **Approve the customer message as compliance** — or on the Communications tab, under **Send a message**, choose situation `manual_review_underway` and click **Draft and approve as me**. The generic `TPL-0004` holding message is sent (*Simulated - sent to demo outbox*).
+1. Open Case 12 and the **Decision & messages tab**, with the role on the form set to **compliance**. Choose **escalate**. The **Customer message** preview reads *"No automatic message. Compliance decides separately what the customer is told."* — for every decision offered.
+2. Record **escalate** with an escalation target and reason. **Nothing is sent.** The **Customer message** box at the top of the tab repeats *"No automatic message …"*, **Message history** shows a compliance task, *decide customer communication*, and the sidebar's **Customer** card reads *awaiting compliance approval*.
+3. Compliance now approves the customer message as a **separate step**: in the Customer message box click **Approve the customer message as compliance** — or in **Message history**, under **Send a message**, choose situation `manual_review_underway` and click **Draft and approve as me**. The generic `TPL-0004` holding message is sent (*Simulated - sent to demo outbox*).
 4. Optional: the **Timeline** tab shows two separate events, `human_decision_recorded` and then `customer_communication_approved`: deciding the case and approving what the customer reads are two acts, each with a name on it.
 
 **What to say:** "On a confirmed match the system writes nothing to the customer on its own — not even with the decision. What the customer is told is a compliance decision in its own right, and the audit trail keeps it separate."

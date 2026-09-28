@@ -25,7 +25,7 @@ import threading
 import traceback
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import parse_qs, quote, urlparse
+from urllib.parse import parse_qs, quote, urlencode, urlparse
 
 UC4 = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(UC4))
@@ -192,6 +192,15 @@ class Handler(BaseHTTPRequestHandler):
                     if not _case_exists(conn, case_id):
                         return self._html(self._no_case(case_id), 404)
                     tab = query.get("tab", ["Timeline"])[0]
+                    if tab in render.TAB_ALIASES:
+                        # An old Decision or Communications link: the merged tab,
+                        # at that section, keeping any outcome the address carries.
+                        merged, section = render.TAB_ALIASES[tab]
+                        rest = {k: v for k, v in query.items() if k != "tab"}
+                        return self._redirect(
+                            "/case/" + case_id + "?" + urlencode(
+                                {"tab": merged, **rest}, doseq=True, quote_via=quote)
+                            + "#" + section)
                     if tab not in render.TABS:
                         tab = "Timeline"
                     body = render.case_detail(conn, case_id, tab=tab, role=role,
@@ -433,8 +442,10 @@ def _case_exists(conn, case_id: str) -> bool:
 
 
 def _with(url: str, key: str, value: str) -> str:
+    # The outcome goes in the query, before any #section, which stays last.
+    url, hash_, section = url.partition("#")
     joiner = "&" if "?" in url else "?"
-    return url + joiner + key + "=" + quote(value[:400])
+    return url + joiner + key + "=" + quote(value[:400]) + hash_ + section
 
 
 def serve(port: int = 8700, host: str = "127.0.0.1") -> ThreadingHTTPServer:

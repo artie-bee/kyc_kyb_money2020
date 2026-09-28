@@ -393,6 +393,59 @@ def follow_up(conn, case_id: str) -> dict:
 
 
 DELIVERY_LABEL = communication.DELIVERY_LABEL
+CLOSED_WORD = {"approved": "approved", "rejected": "rejected"}
+
+
+def customer_summary(conn, case_id: str) -> dict:
+    """The console sidebar's "Customer" card: the latest message to the
+    customer and where the case stands. Derived from the communication,
+    outbox, hold, decision and audit records; internal, never on the portal.
+
+    latest is None when nothing has been drafted or withheld. Its status is
+    "sent", "draft" (drafted, not sent) or "awaiting compliance approval" (a
+    confirmed sanctions match withheld the automatic message and compliance
+    has not approved one since).
+    """
+    row = conn.execute("SELECT * FROM onboarding_case WHERE case_id = ?", (case_id,)).fetchone()
+    events = conn.execute(
+        "SELECT event_id, action, payload_summary, timestamp FROM audit_event WHERE case_id = ?"
+        " AND action IN ('communication_drafted', 'customer_communication_withheld',"
+        " 'case_closed_no_response') ORDER BY event_id", (case_id,)).fetchall()
+    comms = {r["communication_id"]: r for r in conn.execute(
+        "SELECT c.*, o.sent_at FROM communication c LEFT JOIN outbox o USING (communication_id)"
+        " WHERE c.case_id = ? AND c.audience = 'applicant'", (case_id,))}
+
+    latest = None
+    for ev in events:
+        comm = comms.get(ev["payload_summary"].split(" ", 1)[0])
+        if ev["action"] == "communication_drafted" and comm is not None:
+            sent = comm["sent_status"] == "sent"
+            latest = {"status": "sent" if sent else "draft",
+                      "subject": comm["message_type"].replace("_", " ").capitalize(),
+                      "snippet": comm["rendered_text"], "template_id": comm["template_id"],
+                      "at": comm["sent_at"] if sent else comm["created_at"],
+                      "delivery": DELIVERY_LABEL if sent else "Not sent"}
+        elif ev["action"] == "customer_communication_withheld":
+            latest = {"status": "awaiting compliance approval",
+                      "subject": "No automatic message",
+                      "snippet": "Compliance decides separately what the customer is told.",
+                      "template_id": None, "at": ev["timestamp"], "delivery": "Not sent"}
+
+    status = row["status"]
+    if status in CLOSED_STATUSES:
+        no_reply = next((ev for ev in events if ev["action"] == "case_closed_no_response"), None)
+        last = (decisions(conn, case_id) or [None])[-1]
+        word = ("closed: no response" if no_reply else CLOSED_WORD.get(status, "withdrawn"))
+        when = (no_reply["timestamp"] if no_reply else
+                last["timestamp"] if last else row["updated_at"])
+        state = {"open": False, "text": "Closed - " + word, "date": when[:10]}
+    else:
+        worst = holds.worst(conn, case_id)
+        owner = (worst.owner if worst else row["next_action_owner"]
+                 if row["next_action_owner"] in ("customer", "analyst", "compliance")
+                 else "analyst")
+        state = {"open": True, "text": "Open - waiting on " + owner, "date": None}
+    return {"latest": latest, "state": state}
 
 
 def decision_message_previews(conn, case_id: str, options) -> dict:

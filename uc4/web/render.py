@@ -18,6 +18,7 @@ interpolation is a syntax error.
 import html
 import sys
 from pathlib import Path
+from urllib.parse import quote
 
 UC4 = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(UC4))
@@ -36,8 +37,15 @@ SCREENS = [("Operations dashboard", "/"), ("My queue", "/queue"), ("Case detail"
 # too, and inferring it sent every "Operations dashboard" link to /<case-id>.
 CASE_SCREENS = {"Case detail", "Customer view", "Audit export"}
 
+MESSAGES_TAB = "Decision-messages"
 TABS = ["Timeline", "Checklist", "Documents", "People", "Checks",
-        "Risk", "Decision", "Communications"]
+        "Risk", MESSAGES_TAB]
+# What a tab is called on screen, where that differs from its key in the address.
+TAB_LABELS = {MESSAGES_TAB: "Decision & messages"}
+# The two tabs merged into MESSAGES_TAB, and the section each one became. An old
+# link to either (a bookmark, a form's back address) lands on that section.
+TAB_ALIASES = {"Decision": (MESSAGES_TAB, "decision"),
+               "Communications": (MESSAGES_TAB, "messages")}
 
 STATUS_TONE = {
     "submitted": "neutral", "document_quality_review": "info",
@@ -113,6 +121,14 @@ def table(headers, rows, empty="Nothing to show.") -> str:
             + "</tr></thead><tbody>" + body + "</tbody></table></div>")
 
 
+def tab_href(case_id, tab, section=None) -> str:
+    """The address of a case tab, and optionally a section on it. An old tab
+    name resolves to the merged tab and its section."""
+    tab, section = TAB_ALIASES.get(tab, (tab, section))
+    return ("/case/" + case_id + "?tab=" + quote(tab)
+            + ("#" + section if section else ""))
+
+
 def _back(active, case_id):
     href = dict(SCREENS).get(active, "/")
     return href + case_id if active in CASE_SCREENS and case_id else href
@@ -156,6 +172,8 @@ def page(title, body, active, conn=None, case_id=None, role="analyst",
         picker = ('<div><span class="rail__label">Case</span>'
                   '<select data-base="' + e(base) + '" id="casepick">'
                   + options + "</select></div>")
+        if case_id:
+            picker += _customer_card(conn, case_id)
 
     flash_html = ""
     if flash and flash[0] == "link":
@@ -197,6 +215,30 @@ def page(title, body, active, conn=None, case_id=None, role="analyst",
         '  <main class="main">\n' + flash_html + body + "\n  </main>\n"
         "</div>\n"
         '<script src="/static/app.js"></script>\n</body>\n</html>\n')
+
+
+def _customer_card(conn, case_id) -> str:
+    """The sidebar's "Customer" summary: the latest message to the customer and
+    where the case stands. Console chrome only - the portal has no such card."""
+    s = data.customer_summary(conn, case_id)
+    m, state = s["latest"], s["state"]
+    if m is None:
+        msg = '<p class="railcard__empty">No messages yet</p>'
+    else:
+        snippet = m["snippet"] if len(m["snippet"]) <= 90 else m["snippet"][:87] + "..."
+        msg = ('<a class="railcard__msg" href="' + e(tab_href(case_id, MESSAGES_TAB, "messages"))
+               + '"><span class="railcard__subject">' + e(m["subject"]) + "</span>"
+               '<span class="railcard__snippet">' + e(snippet) + "</span>"
+               '<span class="railcard__meta">' + e(m["status"]) + " &middot; "
+               + e(m["at"].replace("T", " ").rstrip("Z") + " UTC") + "</span>"
+               '<span class="railcard__meta">' + e(m["delivery"]) + "</span></a>")
+    when = " &middot; " + e(state["date"]) if state["date"] else ""
+    return ('<div class="railcard" aria-label="Customer summary">'
+            '<span class="rail__label">Customer</span>'
+            '<span class="railcard__k">Latest message</span>' + msg
+            + '<span class="railcard__k">Case state</span>'
+            '<p class="railcard__state railcard__state--' + ("open" if state["open"] else "closed")
+            + '">' + e(state["text"]) + when + "</p></div>")
 
 
 # ---------------------------------------------------------------------------
@@ -338,15 +380,16 @@ def case_detail(conn, case_id, tab="Timeline", role="analyst",
     demo += _reassessment_panel(conn, case_id)
     why = _why_here(conn, case_id, role)
 
-    tabs = "".join('<a class="tab' + (" tab--on" if t == tab else "") + '" href="/case/'
-                   + e(case_id) + "?tab=" + e(t) + '">' + e(t) + "</a>"
+    tab = TAB_ALIASES.get(tab, (tab, None))[0]
+    tabs = "".join('<a class="tab' + (" tab--on" if t == tab else "") + '" href="'
+                   + e(tab_href(case_id, t)) + '">' + e(TAB_LABELS.get(t, t)) + "</a>"
                    for t in TABS)
 
     renderers = {
         "Timeline": _tab_timeline, "Checklist": _tab_checklist,
         "Documents": _tab_documents, "People": _tab_people,
         "Checks": _tab_checks, "Risk": _tab_risk,
-        "Decision": _tab_decision, "Communications": _tab_comms,
+        MESSAGES_TAB: _tab_decision_messages,
     }
     inner = renderers[tab](conn, case_id, role=role, reviewer=reviewer)
 
@@ -364,7 +407,7 @@ def case_detail(conn, case_id, tab="Timeline", role="analyst",
         "</section>"
         '<form method="post" action="/action/customer-link" class="btn-row linkform">'
         '<input type="hidden" name="case_id" value="' + e(case_id) + '">'
-        '<input type="hidden" name="back" value="/case/' + e(case_id) + "?tab=" + e(tab) + '">'
+        '<input type="hidden" name="back" value="' + e(tab_href(case_id, tab)) + '">'
         '<button class="btn" type="submit">Copy customer link</button>'
         '<a class="btn" href="/queue/next?after=' + e(case_id) + '">Next case</a></form>'
         + why + holds_html + restricted + future + demo
@@ -381,8 +424,8 @@ def _why_here(conn, case_id, role) -> str:
     for r in rows:
         action = r["action"]
         if action and r["permitted"]:
-            href = ("/case/" + e(case_id) + ("?tab=" + e(action["tab"]) if action["tab"]
-                                             else "#reassess"))
+            href = e(tab_href(case_id, action["tab"]) if action["tab"]
+                     else "/case/" + case_id + "#reassess")
             control = ('<a class="btn btn--primary" href="' + href + '" data-route="'
                        + e(action["route"]) + '" data-function="' + e(action["function"])
                        + '">' + e(action["label"]) + "</a>")
@@ -585,7 +628,8 @@ def _add_item_form(conn, case_id) -> str:
             '<input type="text" name="reason" required></div></div>'
             '<button class="btn btn--primary" type="submit">Add to the checklist</button>'
             '<p class="foot">Added as required. The customer sees it on their checklist at '
-            "once; send the matching approved message from the Communications tab.</p>"
+            "once; send the matching approved message from Message history on the "
+            "Decision &amp; messages tab.</p>"
             "</form>")
 
 
@@ -1059,6 +1103,19 @@ def _tab_decision(conn, case_id, role="analyst", reviewer="analyst.demo", **kw):
                     "person signing it off.")
         + '</span><span class="recobar__v">' + e(signoff) + "</span></div></div>")
 
+    # Allowed and not offered, both read from kb/analyst_decision_taxonomy.csv
+    # at this band: a critical case has no approve on it, and this says why.
+    withheld = data.withheld_decisions(conn, case_id)
+    offered = ('<p class="muted">Allowed at band <code>' + e(band) + "</code>: "
+               + e(", ".join(options)) + ".</p>")
+    if withheld:
+        items = "".join("<li><strong>" + e(w["decision"]) + "</strong> (allowed at "
+                        + e(w["allowed_bands"]) + ")</li>" for w in withheld)
+        offered += note("The taxonomy does not allow these here, so they are not on the "
+                        "list to be attempted:<ul>" + items + "</ul>", "warn",
+                        "Not offered at band <code>" + e(band) + "</code>")
+    out.append(offered)
+
     out.append(_ai_preparation(conn, case_id, role))
 
     opts = []
@@ -1067,9 +1124,10 @@ def _tab_decision(conn, case_id, role="analyst", reviewer="analyst.demo", **kw):
         opts.append('<option value="' + e(o) + '">' + e(o) + e(same) + "</option>")
 
     out.append(
+        '<div class="grid2 decide">'
         '<form method="post" action="/action/record-decision" class="panel">'
         '<input type="hidden" name="case_id" value="' + e(case_id) + '">'
-        '<input type="hidden" name="back" value="/case/' + e(case_id) + '?tab=Decision">'
+        '<input type="hidden" name="back" value="' + e(tab_href(case_id, "Decision")) + '">'
 
         '<div class="formsection"><div class="formsection__head">The decision</div>'
         '<div class="field"><label>Decision'
@@ -1129,8 +1187,7 @@ def _tab_decision(conn, case_id, role="analyst", reviewer="analyst.demo", **kw):
         '<input type="text" name="reviewer" value="' + e(reviewer) + '"></div>'
         "</div></div>"
         '<button class="btn btn--primary" type="submit">Record this decision</button>'
-        "</form>")
-    out.append(_message_previews(conn, case_id, options))
+        "</form>" + _message_previews(conn, case_id, options) + "</div>")
     return "".join(out)
 
 
@@ -1148,7 +1205,7 @@ def _message_previews(conn, case_id, options) -> str:
         head = ('<p class="muted">If you record <strong>' + e(choice) + "</strong>:</p>")
         if p["kind"] == "withheld":
             body = note(e(WITHHELD_TEXT) + " After the decision, compliance approves the "
-                        "message as its own action, here or on the Communications tab.",
+                        "message as its own action, here or under Message history.",
                         "warn")
         elif p["kind"] == "message":
             body = ((note(e(GENERIC_NOTE), "info") if p["restricted"] else "")
@@ -1175,7 +1232,8 @@ def _message_sent(conn, case_id, role) -> str:
     after = data.messages_after_decision(conn, case_id)
     if after is None:
         return ""
-    link = ('<a href="/case/' + e(case_id) + '?tab=Communications">' + e(SEE_ALL) + "</a>")
+    link = ('<a href="' + e(tab_href(case_id, MESSAGES_TAB, "messages")) + '">' + e(SEE_ALL)
+            + "</a>")
     rows = [[idtag(m["communication_id"]) + " " + idtag(m["template_id"]),
              e(m["situation"]), e(m["sent_at"].replace("T", " ").rstrip("Z") + " UTC"),
              e(m["delivery"])] for m in after["sent"]]
@@ -1191,8 +1249,8 @@ def _message_sent(conn, case_id, role) -> str:
             form = ('<form method="post" action="/action/send-message" class="btn-row">'
                     '<input type="hidden" name="case_id" value="' + e(case_id) + '">'
                     '<input type="hidden" name="situation" value="' + e(after["situation"]) + '">'
-                    '<input type="hidden" name="back" value="/case/' + e(case_id)
-                    + '?tab=Decision">' + action + "</form>")
+                    '<input type="hidden" name="back" value="'
+                    + e(tab_href(case_id, "Decision")) + '">' + action + "</form>")
         parts.append(note(e(WITHHELD_TEXT), "warn") + form)
     elif not rows:
         parts.append('<p class="empty">No customer message followed this decision.</p>')
@@ -1256,7 +1314,7 @@ def _next_steps(conn, case_id, role) -> str:
         if hold.owner == "customer":
             steps.append('<span class="nextsteps__blocked">Waiting on the applicant'
                          "</span>: " + e(what) + ". Nothing for you to clear - send "
-                         "the reminder from the Communications tab if it is overdue.")
+                         "the reminder from Message history below if it is overdue.")
         elif hold.owner != role:
             steps.append('<span class="nextsteps__blocked">Only ' + e(hold.owner)
                          + " can release " + idtag(hold.hold_id) + "</span>: "
@@ -1421,8 +1479,18 @@ def _follow_up_panel(conn, case_id) -> str:
             + '<p class="foot">All times ' + e(zone) + ". " + limit + "</p>")
 
 
-def _tab_comms(conn, case_id, reviewer="analyst.demo", **kw):
-    out = [_follow_up_panel(conn, case_id), "<h2>Communications</h2>"]
+def _tab_decision_messages(conn, case_id, role="analyst", reviewer="analyst.demo", **kw):
+    """The Decision and Communications tabs as one, in the order a person works:
+    what the customer owes, the decision, then every message and Send a message.
+    Each section keeps an id, so the old tab links land on it."""
+    return ('<section id="follow-up">' + _follow_up_panel(conn, case_id) + "</section>"
+            '<section id="decision">' + _tab_decision(conn, case_id, role=role,
+                                                      reviewer=reviewer) + "</section>"
+            '<section id="messages">' + _message_history(conn, case_id) + "</section>")
+
+
+def _message_history(conn, case_id, **kw):
+    out = ["<h2>Message history</h2>"]
     for t in data.compliance_tasks(conn, case_id):
         out.append(note(e(t["reason"]), "bad", "Compliance task " + e(t["task_id"])
                         + ": " + e(t["task"])))
@@ -1447,7 +1515,8 @@ def _tab_comms(conn, case_id, reviewer="analyst.demo", **kw):
         "<h3>Send a message</h3>"
         '<form method="post" action="/action/send-message" class="panel">'
         '<input type="hidden" name="case_id" value="' + e(case_id) + '">'
-        '<input type="hidden" name="back" value="/case/' + e(case_id) + '?tab=Communications">'
+        '<input type="hidden" name="back" value="' + e(tab_href(case_id, "Communications"))
+        + '">'
         '<div class="field"><label>Situation</label><select name="situation">' + opts
         + "</select></div>"
         '<button class="btn btn--primary" type="submit">Draft and approve as me</button>'
