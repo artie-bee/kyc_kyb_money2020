@@ -392,6 +392,42 @@ def follow_up(conn, case_id: str) -> dict:
     return communication.follow_up(conn, case_id, kb())
 
 
+DELIVERY_LABEL = communication.DELIVERY_LABEL
+
+
+def decision_message_previews(conn, case_id: str, options) -> dict:
+    """{decision: the customer message recording it would trigger}, rendered
+    through the approved templates and the communication rules; nothing stored."""
+    return {o: decision.preview_customer_message(conn, case_id, o, kb()) for o in options}
+
+
+def messages_after_decision(conn, case_id: str) -> dict | None:
+    """The latest decision, and what the customer was sent after it: every
+    applicant message drafted after that decision's audit row (so a message
+    compliance approved separately is included), and whether the automatic
+    message was withheld. None if no decision has been recorded."""
+    event = conn.execute("SELECT event_id FROM audit_event WHERE case_id = ? AND"
+                         " action = 'human_decision_recorded' ORDER BY event_id DESC LIMIT 1",
+                         (case_id,)).fetchone()
+    if event is None:
+        return None
+    after = conn.execute("SELECT action, payload_summary FROM audit_event WHERE case_id = ?"
+                         " AND event_id > ? ORDER BY event_id",
+                         (case_id, event["event_id"])).fetchall()
+    drafted = [r["payload_summary"].split(" ", 1)[0] for r in after
+               if r["action"] == "communication_drafted"]
+    sent = [dict(r, delivery=DELIVERY_LABEL) for r in conn.execute(
+        "SELECT c.communication_id, c.template_id, c.situation, o.sent_at FROM outbox o"
+        " JOIN communication c USING (communication_id) WHERE o.case_id = ? AND"
+        " o.audience = 'applicant' ORDER BY o.outbox_id", (case_id,))
+        if r["communication_id"] in drafted]
+    latest = decisions(conn, case_id)[-1]
+    return {"decision": latest, "sent": sent,
+            "withheld": any(r["action"] == "customer_communication_withheld" for r in after),
+            "situation": decision.message_plan(kb(), latest["decision"],
+                                               case(conn, case_id)["case"])[0]}
+
+
 def compliance_tasks(conn, case_id: str) -> list[dict]:
     return _rows(conn, "SELECT * FROM compliance_task WHERE case_id = ? ORDER BY task_id",
                  (case_id,))

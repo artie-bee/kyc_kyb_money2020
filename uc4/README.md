@@ -559,6 +559,14 @@ fill their declared placeholders; it writes no sentences. Three gates:
   3. the rendered text is scanned for restricted wording before any send, and a
      hit blocks it and is audited. A send writes to the outbox table; no mail
      leaves this POC.
+The console's Decision tab previews, for the selected decision, the customer
+message it would trigger (decision.preview_customer_message: the same template
+choice, rendering and wording scan as the real send, storing nothing), and after
+the decision shows what was sent with a link to the Communications tab. On a
+confirmed sanctions match the decision sends nothing - a compliance task is
+raised - and compliance approves the message separately with the existing
+Send-a-message action, so human_decision_recorded and
+customer_communication_approved stay two acts.
 Decisions go through decision.record_decision(), which refuses to approve over an
 open hold, enforces the role the taxonomy requires, COMPUTES override_flag by
 comparing the decision with the recommendation, and requires every cited

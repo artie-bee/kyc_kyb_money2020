@@ -1017,6 +1017,7 @@ def _tab_decision(conn, case_id, role="analyst", reviewer="analyst.demo", **kw):
         if d["override_flag"]:
             out.append(note("Override (" + e(d["override_direction"]) + "): "
                             + e(d["override_reason"]), "warn"))
+    out.append(_message_sent(conn, case_id, role))
 
     open_now = data.open_holds(conn, case_id)
     if open_now:
@@ -1075,7 +1076,7 @@ def _tab_decision(conn, case_id, role="analyst", reviewer="analyst.demo", **kw):
         + help_mark("Only the decisions kb/analyst_decision_taxonomy.csv allows at "
                     "band " + band + " appear here. Some also need a particular "
                     "role, which the backend checks when you record it.")
-        + '</label><select name="choice">' + "".join(opts) + "</select></div>"
+        + '</label><select name="choice" data-previews>' + "".join(opts) + "</select></div>"
         '<div class="field"><label>Rationale'
         + help_mark("Why you decided this, in plain words. Required for every "
                     "decision. This is what a reviewer reads months later, so "
@@ -1129,7 +1130,74 @@ def _tab_decision(conn, case_id, role="analyst", reviewer="analyst.demo", **kw):
         "</div></div>"
         '<button class="btn btn--primary" type="submit">Record this decision</button>'
         "</form>")
+    out.append(_message_previews(conn, case_id, options))
     return "".join(out)
+
+
+GENERIC_NOTE = "Generic wording is used because this case has an internal finding."
+WITHHELD_TEXT = "No automatic message. Compliance decides separately what the customer is told."
+SEE_ALL = "See all communications"
+
+
+def _message_previews(conn, case_id, options) -> str:
+    """The customer message each decision would trigger, shown before it is
+    recorded. One block per decision the form offers; the script shows the one
+    selected (with scripts off, every block is shown under its decision)."""
+    blocks = []
+    for choice, p in data.decision_message_previews(conn, case_id, options).items():
+        head = ('<p class="muted">If you record <strong>' + e(choice) + "</strong>:</p>")
+        if p["kind"] == "withheld":
+            body = note(e(WITHHELD_TEXT) + " After the decision, compliance approves the "
+                        "message as its own action, here or on the Communications tab.",
+                        "warn")
+        elif p["kind"] == "message":
+            body = ((note(e(GENERIC_NOTE), "info") if p["restricted"] else "")
+                    + '<div class="msg"><span class="msg__when">' + idtag(p["template_id"])
+                    + " approved template &middot; situation " + e(p["situation"])
+                    + "</span>" + e(p["text"]) + "</div>")
+        elif p["kind"] == "blocked":
+            body = note("This message would be blocked by the restricted-wording check and "
+                        "not sent.", "bad")
+        else:
+            body = '<p class="empty">No customer message follows this decision.</p>'
+        blocks.append('<div class="preview" data-preview-for="' + e(choice) + '">' + head
+                      + body + "</div>")
+    return ('<section class="panel" id="customer-message"><h3>Customer message'
+            + help_mark("A preview of what the customer would be sent, rendered from the "
+                        "approved template the communication rules choose for the selected "
+                        "decision. Nothing is stored or sent until the decision is recorded.")
+            + "</h3>" + "".join(blocks) + "</section>")
+
+
+def _message_sent(conn, case_id, role) -> str:
+    """After a decision: what the customer was sent, or - on a confirmed
+    sanctions match - the existing compliance approval, a separate action."""
+    after = data.messages_after_decision(conn, case_id)
+    if after is None:
+        return ""
+    link = ('<a href="/case/' + e(case_id) + '?tab=Communications">' + e(SEE_ALL) + "</a>")
+    rows = [[idtag(m["communication_id"]) + " " + idtag(m["template_id"]),
+             e(m["situation"]), e(m["sent_at"].replace("T", " ").rstrip("Z") + " UTC"),
+             e(m["delivery"])] for m in after["sent"]]
+    parts = ["<h3>Customer message</h3>"]
+    if rows:
+        parts.append(table(["Message", "Situation", "Sent", "Delivery"], rows))
+    if after["withheld"] and not rows:
+        form = ""
+        if after["situation"]:
+            action = ('<button class="btn btn--primary" type="submit">Approve the customer '
+                      "message as compliance</button>" if role == "compliance" else
+                      '<span class="help">Switch to the compliance role to approve it.</span>')
+            form = ('<form method="post" action="/action/send-message" class="btn-row">'
+                    '<input type="hidden" name="case_id" value="' + e(case_id) + '">'
+                    '<input type="hidden" name="situation" value="' + e(after["situation"]) + '">'
+                    '<input type="hidden" name="back" value="/case/' + e(case_id)
+                    + '?tab=Decision">' + action + "</form>")
+        parts.append(note(e(WITHHELD_TEXT), "warn") + form)
+    elif not rows:
+        parts.append('<p class="empty">No customer message followed this decision.</p>')
+    parts.append('<p class="foot">' + link + "</p>")
+    return '<section class="panel">' + "".join(parts) + "</section>"
 
 
 def _reason_code_select(conn, case_id, options) -> str:

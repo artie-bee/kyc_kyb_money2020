@@ -216,45 +216,20 @@ def render(template: dict, placeholders: dict) -> str:
     return text
 
 
-def send_required_message(conn, case_id: str, situation: str, kb: KnowledgeBase,
-                          chooser: TemplateChooser | None = None,
-                          approver: str | None = None,
-                          template_id: str | None = None) -> CommunicationResult:
-    """Draft, check and (if approved) send one message.
-
-    `template_id` pins the choice when a decision has already named one;
-    otherwise the chooser picks among the templates the KB allows.
-    """
-    chooser = chooser or MockTemplateChooser()
-    case = conn.execute("SELECT * FROM onboarding_case WHERE case_id = ?", (case_id,)).fetchone()
-    restricted = bool(case["restricted_finding"])
-
-    # Gate 2: a confirmed sanctions match is not a template decision.
-    clear_match = conn.execute(
+def confirmed_sanctions_match(conn, case_id: str) -> bool:
+    return bool(conn.execute(
         "SELECT COUNT(*) FROM screening_check WHERE case_id = ? AND sanctions_result = "
-        "'clear_match'", (case_id,)).fetchone()[0]
-    if clear_match and not approver:
-        task_id = db.next_id(conn, "compliance_task")
-        conn.execute("INSERT INTO compliance_task VALUES (?,?,?,?,?,?,?,?)",
-                     (task_id, case_id, "decide customer communication",
-                      "a confirmed sanctions match is on this case; what the customer is told "
-                      "is a compliance decision, not an automated one",
-                      "compliance", db.now(), None, None))
-        db.audit(conn, case_id, "system", ACTOR, "customer_communication_withheld",
-                 f"{task_id} raised: no automatic message is sent on a confirmed sanctions "
-                 f"match; compliance decides what the customer is told", kb.version)
-        return CommunicationResult(case_id, None, None, "applicant", "not_drafted", "not_sent",
-                                   task_id, ["awaiting a compliance decision on communication"])
+        "'clear_match'", (case_id,)).fetchone()[0])
 
-    # Gate 1: which templates may be used at all.
+
+def _choose(conn, case_id: str, situation: str, kb: KnowledgeBase, chooser: TemplateChooser,
+            template_id: str | None, restricted: bool):
+    """Gate 1, the choice and the rendering - shared by a send and a preview,
+    so what an analyst is shown is what would go. Returns (rule, template id,
+    text), or (None, None, None) when no template is allowed at all."""
     allowed = kb.templates_for(situation, restricted)
     if not allowed:
-        msg = (f"no template is allowed for '{situation}'"
-               + (" on a case with a restricted finding" if restricted else ""))
-        db.audit(conn, case_id, "system", ACTOR, "communication_blocked", msg, kb.version)
-        return CommunicationResult(case_id, None, None, "applicant", "not_drafted", "not_sent",
-                                   None, [msg])
-
+        return None, None, None
     facts = customer_safe_facts(conn, case_id)
     if template_id:
         if template_id not in [a["template_id"] for a in allowed]:
@@ -269,10 +244,72 @@ def send_required_message(conn, case_id: str, situation: str, kb: KnowledgeBase,
             raise TemplateNotAllowed(
                 f"{chooser.mode} chooser returned {choice.template_id}, which is not allowed "
                 f"for '{situation}'; allowed: {[a['template_id'] for a in allowed]}")
-
     rule = next(a for a in allowed if a["template_id"] == choice.template_id)
-    template = kb.message_templates[choice.template_id]
-    text = render(template, choice.placeholders)
+    return rule, choice.template_id, render(kb.message_templates[choice.template_id],
+                                            choice.placeholders)
+
+
+def preview_message(conn, case_id: str, situation: str, kb: KnowledgeBase,
+                    template_id: str | None = None,
+                    chooser: TemplateChooser | None = None) -> dict:
+    """What an automatic send of this situation would do now, writing nothing:
+    the same three gates, the same choice and rendering as send_required_message.
+
+    kind is "message" (template_id, text), "withheld" (a confirmed sanctions
+    match: no automatic message), "none" (no template is allowed) or "blocked"
+    (the rendered text failed the restricted-wording scan; it is not returned).
+    """
+    case = conn.execute("SELECT * FROM onboarding_case WHERE case_id = ?", (case_id,)).fetchone()
+    restricted = bool(case["restricted_finding"])
+    out = {"situation": situation, "restricted": restricted, "template_id": None, "text": None}
+    if confirmed_sanctions_match(conn, case_id):
+        return dict(out, kind="withheld")
+    rule, chosen, text = _choose(conn, case_id, situation, kb, chooser or MockTemplateChooser(),
+                                 template_id, restricted)
+    if rule is None:
+        return dict(out, kind="none")
+    if rule["audience"] == "applicant" and scan(text):
+        return dict(out, kind="blocked", template_id=chosen)
+    return dict(out, kind="message", template_id=chosen, text=text)
+
+
+def send_required_message(conn, case_id: str, situation: str, kb: KnowledgeBase,
+                          chooser: TemplateChooser | None = None,
+                          approver: str | None = None,
+                          template_id: str | None = None) -> CommunicationResult:
+    """Draft, check and (if approved) send one message.
+
+    `template_id` pins the choice when a decision has already named one;
+    otherwise the chooser picks among the templates the KB allows.
+    """
+    chooser = chooser or MockTemplateChooser()
+    case = conn.execute("SELECT * FROM onboarding_case WHERE case_id = ?", (case_id,)).fetchone()
+    restricted = bool(case["restricted_finding"])
+
+    # Gate 2: a confirmed sanctions match is not a template decision.
+    if confirmed_sanctions_match(conn, case_id) and not approver:
+        task_id = db.next_id(conn, "compliance_task")
+        conn.execute("INSERT INTO compliance_task VALUES (?,?,?,?,?,?,?,?)",
+                     (task_id, case_id, "decide customer communication",
+                      "a confirmed sanctions match is on this case; what the customer is told "
+                      "is a compliance decision, not an automated one",
+                      "compliance", db.now(), None, None))
+        db.audit(conn, case_id, "system", ACTOR, "customer_communication_withheld",
+                 f"{task_id} raised: no automatic message is sent on a confirmed sanctions "
+                 f"match; compliance decides what the customer is told", kb.version)
+        return CommunicationResult(case_id, None, None, "applicant", "not_drafted", "not_sent",
+                                   task_id, ["awaiting a compliance decision on communication"])
+
+    # Gate 1: which templates may be used at all, then the choice.
+    rule, chosen, text = _choose(conn, case_id, situation, kb, chooser, template_id, restricted)
+    if rule is None:
+        msg = (f"no template is allowed for '{situation}'"
+               + (" on a case with a restricted finding" if restricted else ""))
+        db.audit(conn, case_id, "system", ACTOR, "communication_blocked", msg, kb.version)
+        return CommunicationResult(case_id, None, None, "applicant", "not_drafted", "not_sent",
+                                   None, [msg])
+    choice = TemplateChoice(chosen, {})
+    template = kb.message_templates[chosen]
 
     comm_id = db.next_id(conn, "communication")
     approval = "approved" if approver else (
