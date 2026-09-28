@@ -1292,8 +1292,64 @@ def _ai_preparation(conn, case_id, role="analyst") -> str:
         + "</div></section>")
 
 
+FOLLOW_UP_TONE = {"Awaiting customer": "warn", "Reminder sent": "warn", "Completed": "ok",
+                  "Closed": "neutral"}
+DOCUMENT_STATE_TONE = {"outstanding": "warn", "received": "ok", "no longer requested": "neutral"}
+
+
+def _when(stamp, zone) -> str:
+    return e(stamp.replace("T", " ").rstrip("Z") + " " + zone) if stamp else ""
+
+
+def _follow_up_panel(conn, case_id) -> str:
+    """Per request sent to the customer: what it asked for, when, whether they
+    viewed it, the reminders since, and where it stands. Every value is read
+    from the communication, outbox and audit records; nothing is kept for it."""
+    f = data.follow_up(conn, case_id)
+    zone = f["timezone"]
+    head = ("<h2>Customer follow-up"
+            + help_mark("One row per request sent to the customer. Reminders follow the "
+                        "schedule in kb/communication_schedule.csv only: viewing a message "
+                        "never delays or stops one. One reminder lists every item still "
+                        "outstanding. The no-response limit counts from the first request "
+                        "and a new upload never resets it.")
+            + "</h2>")
+    if not f["requests"]:
+        owed = (" The customer currently owes: " + e(", ".join(f["owed"])) + "."
+                if f["owed"] else "")
+        return head + '<p class="empty">No request has been sent to the customer yet.' + owed \
+            + "</p>"
+
+    rows = []
+    for r in f["requests"]:
+        docs = "<br>".join(e(d["label"]) + " " + chip(d["state"], DOCUMENT_STATE_TONE)
+                           for d in r["documents"]) or em_dash()
+        history = "<br>".join(idtag(m["communication_id"]) + " " + _when(m["sent_at"], zone)
+                              + ' <span class="muted">(' + e(m["delivery"]) + ")</span>"
+                              for m in r["reminders"]) or '<span class="muted">None sent</span>'
+        rows.append([
+            idtag(r["communication_id"]) + " " + e(r["situation"]),
+            docs,
+            _when(r["sent_at"], zone),
+            e(r["delivery"]),
+            _when(r["viewed_at"], zone) or '<span class="muted">View not recorded</span>',
+            e(r["next_reminder_due"] + " " + zone) if r["next_reminder_due"] else em_dash(),
+            history,
+            chip(r["status"], FOLLOW_UP_TONE),
+        ])
+    limit = ("No-response limit: the case closes as withdrawn on " + e(f["closes_on"]) + " "
+             + e(zone) + " if nothing acceptable arrives, counted from the first request on "
+             + _when(f["first_request_at"], zone) + ". A new upload does not reset it; after "
+             + str(f["attempt_limit"]) + " unreadable uploads an item goes to an analyst."
+             if f["closes_on"] else "")
+    return (head
+            + table(["Request", "Document(s) requested", "Request sent", "Delivery", "Viewed",
+                     "Next reminder due", "Reminder history", "Follow-up status"], rows)
+            + '<p class="foot">All times ' + e(zone) + ". " + limit + "</p>")
+
+
 def _tab_comms(conn, case_id, reviewer="analyst.demo", **kw):
-    out = ["<h2>Communications</h2>"]
+    out = [_follow_up_panel(conn, case_id), "<h2>Communications</h2>"]
     for t in data.compliance_tasks(conn, case_id):
         out.append(note(e(t["reason"]), "bad", "Compliance task " + e(t["task_id"])
                         + ": " + e(t["task"])))

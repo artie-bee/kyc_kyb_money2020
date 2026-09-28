@@ -188,6 +188,11 @@ class Handler(BaseHTTPRequestHandler):
                         title = active = "Documents needed"
                     else:
                         body, title, active = render.messages(view), "Messages", "Messages"
+                        if self.command == "GET":
+                            # Audited for the console's follow-up panel; it never
+                            # changes a reminder.
+                            data.record_messages_viewed(
+                                conn, case_id, [m["communication_id"] for m in view["messages"]])
                     return self._page(render.page(title, body, view, active, flash, demo,
                                                   step=step, cl=cl))
                 finally:

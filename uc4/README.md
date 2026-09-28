@@ -237,7 +237,8 @@ names no document type and counts nothing itself.
   deterministic rules for real, then a hold *"visual check not run in mock
   mode"*, released in the console with the existing *Release document*. After
   that, the phase 2 field-typing step applies. A successful upload stops
-  reminders about that item.
+  reminders about that item; an unreadable one is a new resubmission for it
+  (audited `resubmission_requested`, attempt n of 3) and stays in the reminders.
 - **A document that arrives after the paid checks** (one added during enhanced
   due diligence, say) is screened and read, but `resume()` does not re-run the
   providers. The case goes back to the status its risk band implies.
@@ -563,8 +564,23 @@ open hold, enforces the role the taxonomy requires, COMPUTES override_flag by
 comparing the decision with the recommendation, and requires every cited
 evidence id to exist.
 The resubmission loop runs on a Clock (real, or fake for the tests): one reminder
-after 14 days, closed_withdrawn after 30. A re-upload re-runs Step 3 for that
+after 14 days, closed_withdrawn after 30, both counted from the FIRST request
+(communication.first_request_at) - a new upload or attempt never resets them.
+The reminder is one message listing every item still owed, under the approved
+request wording (TPL-0001, situation `reminder`); the dataset used TPL-0005, a
+status update that names no items. Reminders stop when nothing is owed any more
+(an acceptable replacement, a waived item, an item handed to an analyst after 3
+unreadable uploads) or the case is closed. A re-upload re-runs Step 3 for that
 checklist item only.
+
+Customer follow-up (console, Communications tab) shows per request: the items
+asked for, when it was sent, delivery as "Simulated - sent to demo outbox"
+(never "delivered"), when the customer viewed it, the next reminder due, the
+reminders since and a status (Awaiting customer / Reminder sent / Completed /
+Closed), all in UTC. It is read from the communication, outbox and audit
+records; no table was added. Opening the portal's Messages page audits
+`message_viewed` (actor applicant) and changes nothing else - reminders never
+read it.
 
 ## Step 3 - document quality (Section 5.3)
 Deterministic checks (file type, expiry, proof-of-address age, page count) run in code.

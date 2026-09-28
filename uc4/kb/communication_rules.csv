@@ -2,6 +2,7 @@ situation,template_id,audience,allowed_when_restricted,requires_approval,descrip
 resubmission,TPL-0001,applicant,false,true,A document failed the quality screen and a better copy is needed
 clarification,TPL-0002,applicant,false,true,A specific point needs confirming before the case can move
 missing_items,TPL-0003,applicant,false,true,Required checklist items have not been supplied
+reminder,TPL-0001,applicant,false,true,The single scheduled reminder on an unanswered request; one message listing every item still outstanding
 manual_review_underway,TPL-0004,applicant,true,true,Generic holding message; states no reason and reveals no finding
 status_update,TPL-0005,applicant,true,true,Generic progress note; states no reason
 verification_delay,TPL-0006,applicant,true,true,Checks are taking longer than usual; no action needed from the customer

@@ -17,6 +17,10 @@ Three gates, in order:
      and a hit blocks the send and is audited.
 
 Nothing leaves the building. A send writes to the outbox table.
+
+Following up (the console's Customer follow-up panel) is read from the same
+records: the request and reminder rows here and in the outbox, and the audit
+trail for which items each message asked for and when the customer viewed it.
 """
 
 import re
@@ -25,8 +29,24 @@ from datetime import date, timedelta
 
 from .. import clock, db, holds
 from ..kb import KnowledgeBase
+from .document_quality import CLOSED_STATUSES, MAX_ATTEMPTS, OPEN_FOR_UPLOAD
+from .requirement_pack import shown_to_customer
 
 ACTOR = "step.communication"
+
+# The situations that ask the customer for something. The no-response clock
+# starts at the first of them (first_request_at) and never restarts.
+REQUEST_SITUATIONS = ("resubmission", "clarification", "missing_items")
+REMINDER = "reminder"
+# What a send is, as far as the POC can say: written to the outbox table. There
+# is no mail gateway to report delivery, so nothing is ever called "delivered".
+DELIVERY_LABEL = "Simulated - sent to demo outbox"
+TIMEZONE = "UTC"
+FOLLOW_UP_STATUSES = ("Awaiting customer", "Reminder sent", "Completed", "Closed")
+# Appended to a request's or reminder's communication_drafted audit row, so the
+# items it asked for stay on the record however the checklist changes later.
+_ITEMS_REQUESTED = "; items requested: "
+_COMM_ID = re.compile(r"COM-\d+")
 
 # Words that must never appear in anything a customer is shown (Section 11.3).
 RESTRICTED_WORDING = (
@@ -140,18 +160,37 @@ def scan(text: str) -> list[str]:
                    if re.search(rf"(?<![a-z]){re.escape(w)}(?![a-z])", lowered)})
 
 
+def owed_items(conn, case_id: str) -> list:
+    """The checklist items the customer still has to send: asked of them, not
+    optional, and either never uploaded or sent back. An item that is accepted,
+    being looked at by a person, waived, or no longer asked for is not owed -
+    so it drops out of every reminder by itself."""
+    rows = conn.execute(
+        "SELECT i.*, ind.full_name FROM checklist_item i JOIN requirement_pack p"
+        " USING (pack_id) LEFT JOIN individual ind"
+        " ON ind.individual_id = i.subject_individual_id"
+        " WHERE p.case_id = ? ORDER BY i.item_id", (case_id,)).fetchall()
+    return [r for r in rows if r["level"] != "optional" and r["status"] in OPEN_FOR_UPLOAD
+            and shown_to_customer(r)]
+
+
+def item_label(item) -> str:
+    """How an item is named in a message: its document type, and whose it is."""
+    name = item["document_type"].replace("_", " ")
+    return name + (" for " + item["full_name"] if item["full_name"] else "")
+
+
 def customer_safe_facts(conn, case_id: str) -> dict:
-    """Only what a customer may be told: names and outstanding document types."""
+    """Only what a customer may be told: names and the items they still owe."""
     case = conn.execute("SELECT * FROM onboarding_case WHERE case_id = ?", (case_id,)).fetchone()
     applicant = conn.execute("SELECT * FROM applicant WHERE applicant_id = ?",
                              (case["applicant_id"],)).fetchone()
     contact = conn.execute(
         "SELECT full_name FROM individual WHERE applicant_id = ? ORDER BY individual_id LIMIT 1",
         (case["applicant_id"],)).fetchone()
-    outstanding = [r["document_type"].replace("_", " ") for r in conn.execute(
-        "SELECT DISTINCT i.document_type FROM checklist_item i JOIN requirement_pack p"
-        " USING (pack_id) WHERE p.case_id = ? AND i.level = 'required'"
-        " AND i.status != 'accepted'", (case_id,))]
+    # Every owed item, in one list: a request or a reminder names them all in
+    # one message, never one message per document.
+    outstanding = list(dict.fromkeys(item_label(i) for i in owed_items(conn, case_id)))
     return {
         "case_id": case_id,
         "applicant_name": applicant["legal_name"],
@@ -244,10 +283,14 @@ def send_required_message(conn, case_id: str, situation: str, kb: KnowledgeBase,
         " created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
         (comm_id, case_id, choice.template_id, rule["audience"], template["message_type"],
          situation, approval, approver, "not_sent", text, db.now()))
+    asked = ""
+    if situation in REQUEST_SITUATIONS + (REMINDER,):
+        asked = _ITEMS_REQUESTED + (", ".join(i["item_id"] for i in owed_items(conn, case_id))
+                                    or "none")
     db.audit(conn, case_id, "ai_agent", ACTOR, "communication_drafted",
              f"{comm_id} drafted from template {choice.template_id} for audience "
              f"{rule['audience']}; situation {situation}; restricted={restricted}; "
-             f"chooser={chooser.mode}", chooser.version or kb.version)
+             f"chooser={chooser.mode}" + asked, chooser.version or kb.version)
 
     # Gate 3: the scanner runs on the rendered text, whatever produced it.
     if rule["audience"] == "applicant":
@@ -290,22 +333,48 @@ def send_required_message(conn, case_id: str, situation: str, kb: KnowledgeBase,
 # The resubmission loop
 # ---------------------------------------------------------------------------
 
+def first_request_at(conn, case_id: str) -> str | None:
+    """When the customer was first asked for anything on this case: the first
+    request message sent, or the first time the case was put on the customer,
+    whichever came first. Both deadlines count from here.
+
+    Read from rows that are never rewritten (an outbox row, a hold's placed_at),
+    so nothing that happens later can move it: not a new upload, not a new
+    attempt at an item, not Step 3 lifting and re-placing its customer hold.
+    """
+    marks = ",".join("?" * len(REQUEST_SITUATIONS))
+    sent = conn.execute(
+        "SELECT MIN(o.sent_at) FROM outbox o JOIN communication c USING (communication_id)"
+        f" WHERE o.case_id = ? AND c.audience = 'applicant' AND c.situation IN ({marks})",
+        (case_id, *REQUEST_SITUATIONS)).fetchone()[0]
+    held = conn.execute("SELECT MIN(placed_at) FROM case_hold WHERE case_id = ?"
+                        " AND owner = 'customer'", (case_id,)).fetchone()[0]
+    return min((t for t in (sent, held) if t), default=None)
+
+
 def chase(conn, case_id: str, kb: KnowledgeBase, clock: Clock,
           chooser: TemplateChooser | None = None,
           approver: str = "ops.queue") -> CommunicationResult | None:
     """Send the single reminder, or close the case, when the clock says so.
 
     Called each day the case sits unanswered. Returns the message it sent, or
-    None if it is not yet time for one.
+    None if it is not yet time for one - or no longer: the case is closed or
+    withdrawn, or nothing is owed any more (an acceptable replacement arrived,
+    or the item was waived or taken over by an analyst).
+
+    The reminder is one message listing every item still owed, never one per
+    document. Both deadlines count from the FIRST request and a new attempt
+    does not restart them. Whether the customer has viewed a message is never
+    read here: reminders follow the schedule only.
     """
-    hold = next((h for h in holds.open_holds(conn, case_id)
-                 if h.owner == "customer"), None)
-    if hold is None:
+    status = conn.execute("SELECT status FROM onboarding_case WHERE case_id = ?",
+                          (case_id,)).fetchone()["status"]
+    waiting_on = [h for h in holds.open_holds(conn, case_id) if h.owner == "customer"]
+    owed = owed_items(conn, case_id)
+    if status in CLOSED_STATUSES or not waiting_on or not owed:
         return None
 
-    placed = conn.execute("SELECT placed_at FROM case_hold WHERE hold_id = ?",
-                          (hold.hold_id,)).fetchone()["placed_at"]
-    waited = (clock.today() - date.fromisoformat(placed[:10])).days
+    waited = (clock.today() - date.fromisoformat(first_request_at(conn, case_id)[:10])).days
     already = {r["situation"] for r in conn.execute(
         "SELECT situation FROM communication WHERE case_id = ?", (case_id,))}
 
@@ -313,8 +382,9 @@ def chase(conn, case_id: str, kb: KnowledgeBase, clock: Clock,
         if "case_closed" in already:
             return None
         result = send_required_message(conn, case_id, "case_closed", kb, chooser, approver)
-        holds.release(conn, hold.hold_id, approver,
-                      f"no response {waited} days after the request; closing as withdrawn")
+        for hold in waiting_on:
+            holds.release(conn, hold.hold_id, approver,
+                          f"no response {waited} days after the request; closing as withdrawn")
         db.update_case(conn, case_id, status="closed_withdrawn", next_action_owner="system")
         db.audit(conn, case_id, "system", ACTOR, "case_closed_no_response",
                  f"no response {waited} days after the original request; closed as withdrawn "
@@ -323,16 +393,138 @@ def chase(conn, case_id: str, kb: KnowledgeBase, clock: Clock,
         return result
 
     if waited >= kb.communication_schedule["first_reminder_after_days"]:
-        if "reminder" in already:
+        if REMINDER in already:
             return None
-        result = send_required_message(conn, case_id, "status_update", kb, chooser, approver)
-        conn.execute("UPDATE communication SET situation = 'reminder' WHERE communication_id = ?",
-                     (result.communication_id,))
+        result = send_required_message(conn, case_id, REMINDER, kb, chooser, approver)
+        if result.communication_id is None:
+            return result           # withheld or blocked; the step audited why
         db.audit(conn, case_id, "system", ACTOR, "applicant_chased",
-                 f"no response after {waited} days; single reminder sent under the approved "
-                 f"template", kb.version)
+                 f"no response after {waited} days; single reminder {result.communication_id} "
+                 f"sent under the approved template, listing {len(owed)} outstanding item(s): "
+                 + ", ".join(f"{i['item_id']} ({i['document_type']})" for i in owed),
+                 kb.version)
         return result
     return None
+
+
+# ---------------------------------------------------------------------------
+# Follow-up visibility: view tracking and the console panel
+# ---------------------------------------------------------------------------
+
+def record_view(conn, case_id: str, communication_ids, kb: KnowledgeBase | None = None) -> None:
+    """The customer opened their messages. Recorded for the console's
+    follow-up panel only: chase() never reads it, so a viewed message is
+    reminded about on the same schedule as one nobody opened."""
+    ids = [i for i in communication_ids if i]
+    if ids:
+        db.audit(conn, case_id, "applicant", "customer", "message_viewed",
+                 f"{', '.join(ids)} shown to the customer on the Messages page",
+                 getattr(kb, "version", None))
+
+
+def _first_views(conn, case_id: str) -> dict:
+    """{communication_id: when the customer first viewed it}."""
+    out = {}
+    for r in conn.execute("SELECT payload_summary, timestamp FROM audit_event WHERE case_id = ?"
+                          " AND action = 'message_viewed' ORDER BY event_id", (case_id,)):
+        for comm_id in _COMM_ID.findall(r["payload_summary"]):
+            out.setdefault(comm_id, r["timestamp"])
+    return out
+
+
+def _items_requested(conn, case_id: str) -> dict:
+    """{communication_id: [item ids it asked for]}, from its draft audit row."""
+    out = {}
+    for (payload,) in conn.execute("SELECT payload_summary FROM audit_event WHERE case_id = ?"
+                                   " AND action = 'communication_drafted'", (case_id,)):
+        head, found, items = payload.partition(_ITEMS_REQUESTED)
+        comm = _COMM_ID.match(head)
+        if found and comm:
+            out[comm.group(0)] = [i for i in items.split(", ") if i and i != "none"]
+    return out
+
+
+def _on_day(stamp: str, days: int) -> str:
+    return (date.fromisoformat(stamp[:10]) + timedelta(days=days)).isoformat()
+
+
+def follow_up(conn, case_id: str, kb: KnowledgeBase) -> dict:
+    """What the console's Customer follow-up panel shows: one entry per request
+    sent to the customer, each with the items it asked for, when it was sent,
+    whether it was viewed, the reminders since and where it stands.
+
+    Built from records that already exist; nothing is stored for the panel.
+    Times are the stored UTC stamps.
+    """
+    case = conn.execute("SELECT status FROM onboarding_case WHERE case_id = ?",
+                        (case_id,)).fetchone()
+    closed = case["status"] in CLOSED_STATUSES
+    schedule = kb.communication_schedule
+    started = first_request_at(conn, case_id)
+    chasing = any(h.owner == "customer" for h in holds.open_holds(conn, case_id))
+    owed = {i["item_id"] for i in owed_items(conn, case_id)}
+    items = {r["item_id"]: r for r in conn.execute(
+        "SELECT i.*, ind.full_name FROM checklist_item i JOIN requirement_pack p USING (pack_id)"
+        " LEFT JOIN individual ind ON ind.individual_id = i.subject_individual_id"
+        " WHERE p.case_id = ?", (case_id,))}
+    views = _first_views(conn, case_id)
+    asked = _items_requested(conn, case_id)
+    sent = [dict(r) for r in conn.execute(
+        "SELECT c.communication_id, c.situation, o.sent_at FROM outbox o"
+        " JOIN communication c USING (communication_id) WHERE o.case_id = ?"
+        " AND o.audience = 'applicant' ORDER BY o.outbox_id", (case_id,))]
+    reminders = [dict(m, delivery=DELIVERY_LABEL, viewed_at=views.get(m["communication_id"]))
+                 for m in sent if m["situation"] == REMINDER]
+
+    requests = []
+    for m in (m for m in sent if m["situation"] in REQUEST_SITUATIONS):
+        # A request sent before items were recorded on it asked for what is owed.
+        ids = asked.get(m["communication_id"]) or sorted(owed)
+        documents = []
+        for item_id in ids:
+            item = items.get(item_id)
+            state = ("no longer requested" if item is None or not shown_to_customer(item)
+                     else "outstanding" if item_id in owed else "received")
+            documents.append({"item_id": item_id, "state": state,
+                              "label": item_label(item) if item else item_id})
+        since = [r for r in reminders if r["sent_at"] >= m["sent_at"]]
+        outstanding = any(d["state"] == "outstanding" for d in documents)
+        if closed:
+            status = "Closed"
+        elif outstanding:
+            status = "Reminder sent" if since else "Awaiting customer"
+        elif any(d["state"] == "received" for d in documents):
+            status = "Completed"
+        else:
+            status = "Closed"
+
+        due = None
+        if status == "Awaiting customer" and chasing and started:
+            due = _on_day(started, schedule["first_reminder_after_days"])
+        requests.append({
+            "communication_id": m["communication_id"],
+            "situation": m["situation"],
+            "documents": documents,
+            "sent_at": m["sent_at"],
+            "delivery": DELIVERY_LABEL,
+            "viewed_at": views.get(m["communication_id"]),
+            "next_reminder_due": due,
+            "reminders": since,
+            "status": status,
+        })
+
+    open_now = any(r["status"] in ("Awaiting customer", "Reminder sent") for r in requests)
+    return {
+        "timezone": TIMEZONE,
+        "requests": requests,
+        "first_request_at": started,
+        # The case-level limit, from the first request; a new attempt never moves it.
+        "closes_on": (_on_day(started, schedule["close_after_days"])
+                      if started and open_now and chasing else None),
+        "chasing": chasing,
+        "owed": [item_label(items[i]) for i in sorted(owed)],
+        "attempt_limit": MAX_ATTEMPTS,
+    }
 
 
 def reupload(conn, case_id: str, application: dict, kb: KnowledgeBase, file_name: str,

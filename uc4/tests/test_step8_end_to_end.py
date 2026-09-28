@@ -110,6 +110,13 @@ def test_communications_match_the_dataset(demo):
         return {k: sorted(v) for k, v in out.items()}
 
     expected = key(_csv("communication.csv"))
+    # One deliberate departure: the dataset sends case 14's reminder under
+    # TPL-0005 (status_update), whose approved text says every document has
+    # arrived and names none. The reminder reuses the approved request wording,
+    # TPL-0001, so the one reminder can list every item still outstanding.
+    expected["WAL-ONB-0014"] = sorted(
+        ("TPL-0001",) + row[1:] if row[0] == "TPL-0005" else row
+        for row in expected["WAL-ONB-0014"])
     actual = key([dict(r) for r in demo.execute(
         "SELECT case_id, template_id, audience, approval_status, sent_status FROM communication")])
     assert expected, "no dataset communications to compare"
@@ -197,8 +204,8 @@ def test_case_14_auto_withdraws_on_the_fake_clock():
     sent = [r["template_id"] for r in conn.execute(
         "SELECT template_id FROM communication WHERE case_id = 'WAL-ONB-0014'"
         " ORDER BY communication_id")]
-    assert sent == ["TPL-0001", "TPL-0005", "TPL-0012"], \
-        "request, one reminder, then the closure notice"
+    assert sent == ["TPL-0001", "TPL-0001", "TPL-0012"], \
+        "request, one reminder (the approved request wording), then the closure notice"
     actions = [r["action"] for r in conn.execute(
         "SELECT action FROM audit_event WHERE case_id = 'WAL-ONB-0014'")]
     assert "applicant_chased" in actions and "case_closed_no_response" in actions

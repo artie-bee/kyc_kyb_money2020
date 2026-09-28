@@ -388,6 +388,10 @@ def communications(conn, case_id: str) -> list[dict]:
                  (case_id,))
 
 
+def follow_up(conn, case_id: str) -> dict:
+    return communication.follow_up(conn, case_id, kb())
+
+
 def compliance_tasks(conn, case_id: str) -> list[dict]:
     return _rows(conn, "SELECT * FROM compliance_task WHERE case_id = ? ORDER BY task_id",
                  (case_id,))
@@ -647,6 +651,12 @@ def issue_portal_access(conn, case_id, issued_by):
 
 def portal_case(conn, token):
     return portal_access.resolve(conn, token)
+
+
+def record_messages_viewed(conn, case_id, communication_ids):
+    """The customer opened the Messages page. Audited, and changes nothing else."""
+    communication.record_view(conn, case_id, communication_ids, kb())
+    conn.commit()
 
 
 def end_portal_session(conn, token):

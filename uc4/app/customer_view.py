@@ -122,11 +122,13 @@ def customer_view(conn, case_id: str) -> dict:
         "SELECT a.legal_name FROM applicant a JOIN onboarding_case c USING (applicant_id)"
         " WHERE c.case_id = ?", (case_id,)).fetchone()
 
+    # The id travels with each message so the portal can record which ones the
+    # customer was shown; it is never printed on the page.
     messages = [
-        {"sent_at": r["sent_at"], "text": r["body"]}
+        {"sent_at": r["sent_at"], "text": r["body"], "communication_id": r["communication_id"]}
         for r in conn.execute(
-            "SELECT o.sent_at, o.body FROM outbox o WHERE o.case_id = ? AND o.audience ="
-            " 'applicant' ORDER BY o.outbox_id", (case_id,))
+            "SELECT o.sent_at, o.body, o.communication_id FROM outbox o WHERE o.case_id = ?"
+            " AND o.audience = 'applicant' ORDER BY o.outbox_id", (case_id,))
     ]
     partner = bool(case["white_label_branch_flag"])
     applied_on = (case["created_at"] or "")[:10]

@@ -635,10 +635,22 @@ def receive_upload(conn, case_id: str, item_id: str, original_name: str, content
     if not paid_checks_open:
         reassessment.place(conn, case_id, document, kb)
         holds.apply_status(conn, case_id, kb, case["status"], case["next_action_owner"])
-    # The customer has answered for this item: it drops out of any reminder.
-    db.audit(conn, case_id, "system", ACTOR, "reminders_stopped",
-             f"{item_id} ({item['document_type']}): the customer has sent it; no further "
-             f"reminders about this item", kb.version)
+    now = conn.execute("SELECT status, resubmission_attempts FROM checklist_item"
+                       " WHERE item_id = ?", (item_id,)).fetchone()
+    if now["status"] in OPEN_FOR_UPLOAD:
+        # Unreadable again: a new resubmission for this item, and it stays in
+        # the reminders. The case's reply deadline does not move - it counts
+        # from the first request (communication.first_request_at).
+        db.audit(conn, case_id, "system", ACTOR, "resubmission_requested",
+                 f"{item_id} ({item['document_type']}): the new upload could not be accepted; "
+                 f"attempt {now['resubmission_attempts']} of {MAX_ATTEMPTS}; a new copy is "
+                 f"needed. Reminders and the no-response limit still count from the first "
+                 f"request", kb.version)
+    else:
+        # The customer has answered for this item: it drops out of any reminder.
+        db.audit(conn, case_id, "system", ACTOR, "reminders_stopped",
+                 f"{item_id} ({item['document_type']}): the customer has sent it; no further "
+                 f"reminders about this item", kb.version)
     return UploadResult(case_id, item_id, document, stored, status, result.status,
                         result.next_step)
 
