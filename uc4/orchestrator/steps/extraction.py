@@ -29,7 +29,7 @@ from .. import llm_client
 from ..extractor import (Extractor, MockExtractor,
                          UnknownExtractedField)
 from ..kb import KnowledgeBase
-from .. import demo_samples
+from .. import demo_samples, live_reading
 from . import document_quality
 
 ACTOR = "step.extraction"
@@ -61,7 +61,10 @@ def _date_fields(doc_type: str, values: dict) -> dict:
 
 
 def run(conn, case_id: str, application: dict, kb: KnowledgeBase,
-        extractor: Extractor | None = None, today: date | None = None) -> ExtractionSummary:
+        extractor: Extractor | None = None, today: date | None = None,
+        document_ids: set[str] | None = None) -> ExtractionSummary:
+    """document_ids, when given, limits the run to those documents - the live
+    reader hands over one document it has read, and nothing else on the case."""
     extractor = extractor or MockExtractor()
     today = today or clock.current().today()
 
@@ -73,7 +76,8 @@ def run(conn, case_id: str, application: dict, kb: KnowledgeBase,
     already = {r["document_id"] for r in conn.execute(
         "SELECT DISTINCT document_id FROM extracted_field f JOIN document d"
         " USING (document_id) WHERE d.case_id = ?", (case_id,))}
-    documents = [d for d in documents if d["document_id"] not in already]
+    documents = [d for d in documents if d["document_id"] not in already
+                 and (document_ids is None or d["document_id"] in document_ids)]
     payload_by_name = {d["file_name"]: d for d in application.get("documents", [])}
     max_age = {r["document_type"]: r["max_age_days"] for r in kb.requirement_rules}
 
@@ -108,6 +112,14 @@ def run(conn, case_id: str, application: dict, kb: KnowledgeBase,
                         " needs_analyst_correction, entry_method)"
                         " VALUES (?,?,?,NULL,0,NULL,0,1,'awaiting_analyst_entry')",
                         (db.next_id(conn, "extracted_field"), doc["document_id"], f["field_name"]))
+                if expected and live_reading.should_queue_fields(conn, case_id, doc["document_id"]):
+                    # Hybrid mode: the live model reads it from the queue. The empty
+                    # rows stay as they are, so if the call fails the analyst types
+                    # the fields in exactly as they would have.
+                    db.audit(conn, case_id, "system", ACTOR, live_reading.FIELDS_QUEUED,
+                             f"{doc['document_id']} ({doc_type}, {doc['file_name']}): queued for "
+                             f"the live model to read {len(expected)} field(s)", kb.version)
+                    continue
                 db.audit(conn, case_id, "system", ACTOR, "fields_awaiting_analyst_entry",
                          f"{doc['document_id']} ({doc_type}, {doc['file_name']}): fields not "
                          f"read automatically in mock mode; {len(expected)} field(s) set up for "
@@ -191,10 +203,13 @@ def run(conn, case_id: str, application: dict, kb: KnowledgeBase,
             db.audit(conn, case_id, "ai_agent", ACTOR, "extraction_low_confidence", msg,
                      extractor.version or kb.version)
 
+        # Where the values came from, in words, on the audit row: a replayed demo
+        # sample, or the live model with its provider, model and prompt version.
+        label = replayed or getattr(extractor, "source_label", None)
         db.audit(conn, case_id, "system" if replayed else "ai_agent", ACTOR, "fields_extracted",
                  f"{doc['document_id']} ({doc_type}, {doc['file_name']}): "
                  f"{len(result.fields)} field(s) read, {len(flagged)} below the floor; "
-                 f"extractor={extractor.mode}" + (f"; {replayed}" if replayed else ""),
+                 f"extractor={extractor.mode}" + (f"; {label}" if label else ""),
                  extractor.version or kb.version)
 
     return route_case(conn, case_id, kb, len(documents), n_fields, low_conf, missing_req,
@@ -225,8 +240,15 @@ def route_case(conn, case_id: str, kb: KnowledgeBase, documents_read: int = 0,
         "WHERE p.case_id = ? AND i.level = 'required' AND i.status != 'accepted'",
         (case_id,)).fetchone()[0]
 
+    queued = len(live_reading.queued_fields(conn, case_id))
+    awaiting -= queued
+
     holds.release_own(conn, case_id, ACTOR, "extraction re-evaluated", kb)
 
+    if queued:
+        holds.place(conn, case_id, ACTOR, "manual_review",
+                    f"{document_quality.LIVE_QUEUED}: {queued} document(s) queued for the live "
+                    f"model to read their fields", "analyst", kb)
     if awaiting:
         holds.place(conn, case_id, ACTOR, "manual_review",
                     f"fields not read automatically in mock mode: {awaiting} document(s) "
@@ -242,8 +264,9 @@ def route_case(conn, case_id: str, kb: KnowledgeBase, documents_read: int = 0,
                     f"{outstanding} extracted field(s) cannot be relied on as read"
                     + (f" and {held} document(s) are still held for an analyst" if held else ""),
                     "analyst", kb)
-    elif awaiting:
-        summary = f"{awaiting} document(s) waiting for an analyst to type their fields in"
+    elif queued or awaiting:
+        summary = (f"{queued} document(s) queued for the live model, " if queued else "") + (
+            f"{awaiting} document(s) waiting for an analyst to type their fields in")
     elif required_open:
         summary = (f"{required_open} required checklist item(s) still outstanding; "
                    f"verification stays closed")

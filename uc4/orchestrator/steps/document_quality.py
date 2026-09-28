@@ -50,6 +50,12 @@ SUPERSEDED = "superseded"
 # the visual check yet (mock mode). It is a marker, not a fault: the risk step
 # does not score it as a quality problem.
 VISUAL_MARKER = "visual_check_not_run"
+# A portal upload waiting in the queue for the live model (orchestrator/live_reading.py).
+QUEUED_MARKER = "live_read_queued"
+LIVE_QUEUED = "reading automatically"
+# Each marker is a per-document hold: its reason, and what it is waiting for.
+_PER_DOCUMENT = {VISUAL_MARKER: (VISUAL_CHECK_NOT_RUN, "waiting for an analyst to look at it"),
+                 QUEUED_MARKER: (LIVE_QUEUED, "waiting for the live model")}
 
 # document.quality_status -> checklist_item.status
 ITEM_STATUS = {
@@ -274,7 +280,7 @@ def run(conn, case_id: str, application: dict, kb: KnowledgeBase,
             # The deterministic rules passed it; the visual half was not done by
             # anyone. A person does it before the document counts as accepted.
             status = "manual_review_required"
-            flags.add(VISUAL_MARKER)
+            flags.add(verdict.hold_marker or VISUAL_MARKER)
             problems.append(f"{doc['file_name']}: {verdict.hold_reason}")
         counts[status] += 1
 
@@ -371,7 +377,7 @@ def route_case(conn, case_id: str, kb: KnowledgeBase,
     # document is never held back by another's hold.
     visual_docs = {d["document_id"]: d for d in docs
                    if d["quality_status"] == "manual_review_required"
-                   and VISUAL_MARKER in (d["quality_flags"] or "").split("|")}
+                   and _marker(d["quality_flags"])}
     visual_holds = {}
     for h in holds.open_holds(conn, case_id):
         if h.placed_by_step != ACTOR:
@@ -384,9 +390,9 @@ def route_case(conn, case_id: str, kb: KnowledgeBase,
                           by_step=ACTOR, kb=kb)
     for doc_id, d in visual_docs.items():
         if doc_id not in visual_holds:
+            reason, waiting = _PER_DOCUMENT[_marker(d["quality_flags"])]
             holds.place(conn, case_id, ACTOR, "manual_review",
-                        f"{VISUAL_CHECK_NOT_RUN}: {doc_id} ({d['document_type']}) waiting "
-                        f"for an analyst to look at it", "analyst", kb)
+                        f"{reason}: {doc_id} ({d['document_type']}) {waiting}", "analyst", kb)
 
     if held or counts["manual_review_required"]:
         n = len(held) or counts["manual_review_required"]
@@ -654,12 +660,19 @@ def uploaded_names(conn, case_id: str) -> dict:
     return out
 
 
-_VISUAL_HOLD = re.compile(r"^manual_review: " + re.escape(VISUAL_CHECK_NOT_RUN)
-                          + r": (DOC-\d+) ")
+def _marker(flags: str | None) -> str | None:
+    """The per-document hold marker on a document's flags, if it has one."""
+    present = (flags or "").split("|")
+    return next((m for m in _PER_DOCUMENT if m in present), None)
+
+
+_VISUAL_HOLD = re.compile(r"^manual_review: (?:" + "|".join(
+    re.escape(reason) for reason, _ in _PER_DOCUMENT.values()) + r"): (DOC-\d+) ")
 
 
 def visual_hold_document(reason: str) -> str | None:
-    """The document a visual-check hold is for, from its reason."""
+    """The document a per-document hold is for, from its reason: a visual check
+    not run, or a file queued for the live model."""
     m = _VISUAL_HOLD.match(reason or "")
     return m.group(1) if m else None
 

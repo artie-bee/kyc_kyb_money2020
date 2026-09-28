@@ -10,6 +10,11 @@ take a brand-new application all the way to a decision with real files and no
 typing. Every replayed result says so: "mock: recognised demo sample file", in
 the audit trail and on the console.
 
+Two packs are recognised: the generated Lumen Harbour pack above, and the
+committed Vaher Studio pack in demo_packs/vaher_studio/ (fixed files, so the
+demo that uses them never depends on the live model, whatever
+EXTRACTION_FOR_NEW_UPLOADS says).
+
 Recognition is by content hash, never by file name: a renamed copy of a pack
 file is still recognised, and any other file - however it is named - is not,
 and keeps the ordinary mock-mode path (the visual-check hold, then an analyst
@@ -23,19 +28,36 @@ from pathlib import Path
 LABEL = "mock: recognised demo sample file"
 MANIFEST = Path(__file__).resolve().parents[1] / "sample_documents" / "demo_pack" / "manifest.json"
 
-_cache: dict = {"path": None, "mtime": None, "files": {}}
+# Committed packs with fixed bytes, recognised alongside the generated one.
+PACKS = Path(__file__).resolve().parents[1] / "demo_packs"
+
+_cache: dict = {}
+
+
+def manifests() -> list[Path]:
+    """Every manifest that is recognised: the generated pack, then the committed ones."""
+    return [p for p in [Path(MANIFEST), *sorted(PACKS.glob("*/manifest.json"))] if p.exists()]
+
+
+def _load(path: Path) -> dict:
+    """One manifest, reloaded when the file changes."""
+    mtime = path.stat().st_mtime
+    if _cache.get(path, (None,))[0] != mtime:
+        _cache[path] = (mtime, json.loads(path.read_text(encoding="utf-8")))
+    return _cache[path][1]
 
 
 def _files() -> dict:
-    """{sha256: entry} from the manifest, reloaded when the file changes."""
-    path = Path(MANIFEST)
-    if not path.exists():
-        return {}
-    mtime = path.stat().st_mtime
-    if _cache["path"] != path or _cache["mtime"] != mtime:
-        manifest = json.loads(path.read_text(encoding="utf-8"))
-        _cache.update(path=path, mtime=mtime, files=manifest.get("files", {}))
-    return _cache["files"]
+    """{sha256: entry} across every recognised manifest."""
+    out = {}
+    for path in manifests():
+        out.update(_load(path).get("files", {}))
+    return out
+
+
+def registers() -> list[dict]:
+    """The simulated register entry each pack's company is looked up by."""
+    return [m["register"] for m in map(_load, manifests()) if m.get("register")]
 
 
 def recognise(content: bytes | None = None, path: str | Path | None = None) -> dict | None:

@@ -434,9 +434,8 @@ def lookup_register(registration_number: str) -> dict | None:
                 return {"legal_name": r["registry_legal_name"],
                         "registered_address": r.get("registry_address") or "",
                         "source": SIMULATED_LOOKUP}
-    manifest = uc4 / "sample_documents" / "demo_pack" / "manifest.json"
-    if manifest.exists():
-        company = json.loads(manifest.read_text(encoding="utf-8")).get("register") or {}
+    from . import demo_samples
+    for company in demo_samples.registers():
         if (company.get("number") or "").upper() == number:
             return {"legal_name": company["name"], "registered_address": company["address"],
                     "source": SIMULATED_LOOKUP}

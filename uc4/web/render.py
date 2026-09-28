@@ -630,13 +630,22 @@ def _tab_documents(conn, case_id, role="analyst", reviewer="analyst.demo", **kw)
     documents = data.documents(conn, case_id)
     by_id = {d["document_id"]: d for d in documents}
     replaced = data.replaced_by(conn, case_id)      # new document id -> the one it replaced
+    # Hybrid mode: which documents the live model judged or read, and which are
+    # still waiting for it. Three sources of a value, never shown as one another:
+    # read by the live model, a recognised demo sample, typed in by an analyst.
+    live = data.live_read_documents(conn, case_id)
+    queued = data.live_queued_documents(conn, case_id)
+    in_queue = data.live_queue_length(conn) if queued else 0
+    reading = ("Reading automatically... (" + str(in_queue) + " in queue)")
     for doc in documents:
         replayed = doc["document_id"] in recognised
         held = doc["quality_status"] == "manual_review_required"
+        waiting = doc["document_id"] in queued and doc["quality_status"] != "superseded"
         # The visual-check marker says what Step 3 could not do. Once a person
         # has looked, it no longer describes the document, so it is not shown.
         shown_flags = [f for f in (doc["quality_flags"] or "").split("|")
-                       if f and not (f == "visual_check_not_run" and not held)]
+                       if f and not (f in ("visual_check_not_run", "live_read_queued")
+                                     and not held)]
         flags = ('<span class="type">[' + e("|".join(shown_flags)) + "]</span>"
                  if shown_flags else "")
         if doc["released_by"] and not held and doc["quality_status"] != "superseded":
@@ -652,6 +661,9 @@ def _tab_documents(conn, case_id, role="analyst", reviewer="analyst.demo", **kw)
                            "superseded": "neutral"})
                    + by_applicant
                    + (chip(data.DEMO_SAMPLE_LABEL, tone="warn") if replayed else "")
+                   + (chip(data.LIVE_READ_LABEL, tone="info")
+                      if doc["document_id"] in live["quality"] else "")
+                   + (chip(reading, tone="info") if waiting else "")
                    + flags + "</summary>")
 
         left = _preview(doc)
@@ -676,6 +688,13 @@ def _tab_documents(conn, case_id, role="analyst", reviewer="analyst.demo", **kw)
         if doc["released_by"]:
             right.append(note("Released by " + e(doc["released_by"]) + ": "
                               + e(doc["release_reason"]), "info"))
+        if doc["document_id"] in live["quality"]:
+            right.append("<p><strong>Quality check:</strong> " + chip(
+                live["quality"][doc["document_id"]], tone="info") + "</p>")
+        if waiting:
+            right.append(note("This upload is queued for the live model, which will check "
+                              "it and read its fields. Nothing to do yet; you can still "
+                              "decide on it or type the fields in now.", "info", reading))
         if held:
             right.append(note("Accept keeps the document and lets the case carry "
                               "on. Request resubmission sends it back to the "
@@ -717,6 +736,9 @@ def _tab_documents(conn, case_id, role="analyst", reviewer="analyst.demo", **kw)
                     state = chip("entered by an analyst", tone="info")
                 elif replayed:
                     state = chip(data.DEMO_SAMPLE_LABEL, tone="warn")
+                elif doc["document_id"] in live["fields"]:
+                    state = chip(live["fields"][doc["document_id"]], tone="info") + (
+                        chip("below the confidence floor", tone="bad") if low else "")
                 elif f["corrected_by_analyst"]:
                     state = chip("corrected by an analyst", tone="ok")
                 elif low:
@@ -759,7 +781,8 @@ def _tab_documents(conn, case_id, role="analyst", reviewer="analyst.demo", **kw)
                 right.append("<h3>Fields</h3>" + "".join(rows))
         if awaiting:
             # Beside the preview, so the analyst types what the file says.
-            right.append(_entry_form(case_id, doc, awaiting))
+            right.append(_entry_form(case_id, doc, awaiting,
+                                     data.live_unavailable_reason(conn, doc["document_id"])))
             held = True
 
         cls = "doc doc--held" if held else "doc"
@@ -789,9 +812,11 @@ def _preview(doc) -> str:
             "generated for this document.</p></div>")
 
 
-def _entry_form(case_id, doc, awaiting) -> str:
+def _entry_form(case_id, doc, awaiting, unavailable=None) -> str:
     """Mock mode: nothing reads an uploaded file, so the analyst types in what
-    it says. Recorded as entered_by_analyst - never as extracted."""
+    it says. Recorded as entered_by_analyst - never as extracted. In hybrid mode
+    this is also the fallback when the live model could not read it, and the
+    reason is shown."""
     required = set(data.kb().required_fields_for(doc["document_type"]))
     # Every input starts EMPTY. Nothing the customer declared is offered here:
     # the value typed is what the document says, or the comparison it feeds
@@ -807,6 +832,8 @@ def _entry_form(case_id, doc, awaiting) -> str:
     return ('<form method="post" action="/action/enter-fields" class="panel">'
             '<input type="hidden" name="document_id" value="' + e(doc["document_id"]) + '">'
             '<input type="hidden" name="back" value="/case/' + e(case_id) + '?tab=Documents">'
+            + (note("Automatic reading unavailable: " + e(unavailable.rstrip("."))
+                    + ". Type in the fields instead.", "bad") if unavailable else "")
             + note("Fields not read automatically in mock mode. Open the file, then type in "
                    "what it says. Each value is recorded as <strong>entered by an "
                    "analyst</strong>, under your name, and never as extracted. Dates typed "

@@ -18,7 +18,7 @@ UC4 = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(UC4))
 
 from orchestrator import (clock, db, demo_scenarios, holds, live_mode,    # noqa: E402
-                          portal_access)
+                          live_reading, portal_access)
 from orchestrator.kb import KnowledgeBase                                  # noqa: E402
 from orchestrator.quality_checker import get_upload_checker                # noqa: E402
 from orchestrator import settings                                          # noqa: E402
@@ -564,16 +564,79 @@ def upload_document(conn, case_id, item_id, file_name, content, uploads_dir=None
 
     UploadRefused comes back to the caller with wording meant for the customer.
     """
+    # Hybrid mode: a new file nobody has on record is queued for the live model,
+    # and the portal answers at once. Anything else takes the mock-mode path.
+    checker = (live_reading.QueuedChecker() if live_reading.wants_live(case_id, content)
+               else get_upload_checker(QUALITY_CHECKER_MODE))
     try:
         result = document_quality.receive_upload(
             conn, case_id, item_id, file_name, content, kb(),
-            checker=get_upload_checker(QUALITY_CHECKER_MODE), uploads_dir=uploads_dir)
+            checker=checker, uploads_dir=uploads_dir)
     except document_quality.UploadRefused:
         conn.commit()           # the refusal is audited; that record must survive it
         raise
     conn.commit()
     carry_on(conn, case_id)
     return result
+
+
+# ---------------------------------------------------------------------------
+# Hybrid mode: the live-reading queue
+# ---------------------------------------------------------------------------
+
+LIVE_READ_LABEL = live_reading.LABEL
+
+
+def live_queue_length(conn) -> int:
+    return live_reading.queue_length(conn)
+
+
+def live_queued_documents(conn, case_id) -> set:
+    return ({r["document_id"] for r in live_reading.queued_screens(conn, case_id)}
+            | {r["document_id"] for r in live_reading.queued_fields(conn, case_id)})
+
+
+def live_read_documents(conn, case_id) -> dict:
+    return live_reading.read_by_live_model(conn, case_id)
+
+
+def live_unavailable_reason(conn, document_id):
+    return live_reading.unavailable_reason(conn, document_id)
+
+
+def read_next_live(conn, make_client=None) -> dict | None:
+    """One queued document read by the live model, then the case carried on."""
+    done = live_reading.process_next(conn, kb(), make_client=make_client)
+    conn.commit()
+    if done:
+        carry_on(conn, done["case_id"])
+    return done
+
+
+def start_live_reader(path: Path | None = None, interval: float | None = None):
+    """The background worker for hybrid mode: one document at a time, with a
+    pause between calls so the provider's rate limit is respected (a 429 that
+    still arrives is waited out by the client itself). A daemon thread with its
+    own connection; it stops with the server."""
+    import threading
+    import time
+
+    interval = settings.LIVE_READ_INTERVAL if interval is None else interval
+
+    def loop():
+        conn = connect(path or DB_PATH)
+        while True:
+            try:
+                done = read_next_live(conn)
+            except Exception as e:                  # never take the server down
+                conn.rollback()
+                print(f"live reader: {type(e).__name__}: {e}")
+                done = None
+            time.sleep(interval if done else max(interval, 2))
+
+    worker = threading.Thread(target=loop, name="live-reader", daemon=True)
+    worker.start()
+    return worker
 
 
 def issue_portal_access(conn, case_id, issued_by):

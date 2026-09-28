@@ -264,6 +264,47 @@ console. Any other file keeps the visual-check hold and typed-in fields. Live
 mode ignores the manifest. Generate the pack on the demo day: its proof of
 address is dated from the day it is made. `tests/test_demo_pack.py` covers it.
 
+A second pack is committed in `demo_packs/vaher_studio/`, for Vaher Studio OÜ
+(registry code 16880342). It has fixed files and its own `manifest.json`,
+recognised in the same way, so a demo that uses it never needs the live model.
+Its proof of address is dated 2026-09-10, so it ages like a real one.
+
+### Hybrid extraction for new portal uploads
+
+With `WALLESTER_UC4_EXTRACTION_FOR_NEW_UPLOADS=live_if_available`, some uploads
+are read by the live model instead of being typed in. This applies only to a
+file uploaded to a WAL-DEMO- case that is not a recognised sample. The
+fourteen scripted cases stay in mock mode whatever the setting says.
+
+1. **At upload:** the file is queued and held with its own hold, "reading
+   automatically". The portal answers at once, and the customer sees
+   "Under review".
+2. **In the background:** the console runs a worker (`tools/serve.py`) that
+   takes one document at a time, at most one call every
+   `WALLESTER_UC4_LIVE_READ_INTERVAL` seconds. It uses the current
+   `LLM_PROVIDER` at temperature 0 and makes two calls per document:
+   - the live quality check;
+   - then, when Step 4 reaches the document, the live extractor.
+
+   The existing guardrails apply: strict JSON, the flag vocabulary, the KB
+   field allow-list, and the 0.70 confidence floor. A failed call never counts
+   as a pass.
+3. **On the console:** a document waiting for the model shows *"Reading
+   automatically... (n in queue)"*.
+4. **If the call fails** for any reason (no key, network, rate limit, invalid
+   reply), the document takes the mock path:
+   - the visual-check hold, then the typing form;
+   - the form shows *"Automatic reading unavailable: <reason>. Type in the
+     fields instead."*
+
+Every value carries exactly one of three labels:
+- *"read by live model (provider:model/prompt)"*;
+- *"mock: recognised demo sample file"*;
+- *"entered by an analyst"*.
+
+`tests/test_hybrid_extraction.py` covers all of this with a fake client. It
+makes no real API calls.
+
 ### Uploads after the assessment
 
 A document that arrives once the paid checks have answered is still checked and
@@ -289,6 +330,8 @@ Read from the environment; the defaults are the demo's.
 | `WALLESTER_UC4_MAX_UPLOAD_MB` | `10` | The largest file the portal accepts |
 | `WALLESTER_UC4_PORTAL_URL` | `http://127.0.0.1:8701` | The address in a copied customer link |
 | `WALLESTER_UC4_VIRUS_SCANNER` | `mock` | `mock` (reports clean) or `live` (stub) |
+| `WALLESTER_UC4_EXTRACTION_FOR_NEW_UPLOADS` | `mock_only` | `live_if_available` reads new, unrecognised portal uploads with the live model (see *Hybrid extraction*) |
+| `WALLESTER_UC4_LIVE_READ_INTERVAL` | `3` | Seconds between the background reader's live calls |
 | `LLM_PROVIDER` | `anthropic` | Which model answers in live mode (see *Live mode*) |
 
 **One clock.** Every timestamp, expiry and "waited N days" reads the injected
