@@ -352,6 +352,14 @@ def first_request_at(conn, case_id: str) -> str | None:
     return min((t for t in (sent, held) if t), default=None)
 
 
+def customer_blocking(conn, case_id: str) -> tuple[list, bool]:
+    """(the open customer holds, whether the customer is the only blocker left:
+    at least one customer hold open and no hold owned by anyone else)."""
+    open_now = holds.open_holds(conn, case_id)
+    waiting_on = [h for h in open_now if h.owner == "customer"]
+    return waiting_on, bool(waiting_on) and len(waiting_on) == len(open_now)
+
+
 def chase(conn, case_id: str, kb: KnowledgeBase, clock: Clock,
           chooser: TemplateChooser | None = None,
           approver: str = "ops.queue") -> CommunicationResult | None:
@@ -363,22 +371,27 @@ def chase(conn, case_id: str, kb: KnowledgeBase, clock: Clock,
     or the item was waived or taken over by an analyst).
 
     The reminder is one message listing every item still owed, never one per
-    document. Both deadlines count from the FIRST request and a new attempt
+    document, and it goes whenever the customer owes anything - even while
+    another hold (an analyst on a different document, say) is open too. The
+    automatic closure is narrower: only when the customer is the sole
+    remaining blocker, so a case is never withdrawn while the team still has
+    work on it. Both deadlines count from the FIRST request and a new attempt
     does not restart them. Whether the customer has viewed a message is never
     read here: reminders follow the schedule only.
     """
     status = conn.execute("SELECT status FROM onboarding_case WHERE case_id = ?",
                           (case_id,)).fetchone()["status"]
-    waiting_on = [h for h in holds.open_holds(conn, case_id) if h.owner == "customer"]
     owed = owed_items(conn, case_id)
-    if status in CLOSED_STATUSES or not waiting_on or not owed:
+    started = first_request_at(conn, case_id)
+    if status in CLOSED_STATUSES or not owed or not started:
         return None
+    waiting_on, sole_blocker = customer_blocking(conn, case_id)
 
-    waited = (clock.today() - date.fromisoformat(first_request_at(conn, case_id)[:10])).days
+    waited = (clock.today() - date.fromisoformat(started[:10])).days
     already = {r["situation"] for r in conn.execute(
         "SELECT situation FROM communication WHERE case_id = ?", (case_id,))}
 
-    if waited >= kb.communication_schedule["close_after_days"]:
+    if waited >= kb.communication_schedule["close_after_days"] and sole_blocker:
         if "case_closed" in already:
             return None
         result = send_required_message(conn, case_id, "case_closed", kb, chooser, approver)
@@ -461,7 +474,7 @@ def follow_up(conn, case_id: str, kb: KnowledgeBase) -> dict:
     closed = case["status"] in CLOSED_STATUSES
     schedule = kb.communication_schedule
     started = first_request_at(conn, case_id)
-    chasing = any(h.owner == "customer" for h in holds.open_holds(conn, case_id))
+    _, sole_blocker = customer_blocking(conn, case_id)
     owed = {i["item_id"] for i in owed_items(conn, case_id)}
     items = {r["item_id"]: r for r in conn.execute(
         "SELECT i.*, ind.full_name FROM checklist_item i JOIN requirement_pack p USING (pack_id)"
@@ -499,7 +512,7 @@ def follow_up(conn, case_id: str, kb: KnowledgeBase) -> dict:
             status = "Closed"
 
         due = None
-        if status == "Awaiting customer" and chasing and started:
+        if status == "Awaiting customer" and started:
             due = _on_day(started, schedule["first_reminder_after_days"])
         requests.append({
             "communication_id": m["communication_id"],
@@ -519,9 +532,10 @@ def follow_up(conn, case_id: str, kb: KnowledgeBase) -> dict:
         "requests": requests,
         "first_request_at": started,
         # The case-level limit, from the first request; a new attempt never moves it.
+        # It applies only while the customer is the sole remaining blocker.
         "closes_on": (_on_day(started, schedule["close_after_days"])
-                      if started and open_now and chasing else None),
-        "chasing": chasing,
+                      if started and open_now and sole_blocker else None),
+        "closure_paused": bool(started and open_now and not sole_blocker),
         "owed": [item_label(items[i]) for i in sorted(owed)],
         "attempt_limit": MAX_ATTEMPTS,
     }

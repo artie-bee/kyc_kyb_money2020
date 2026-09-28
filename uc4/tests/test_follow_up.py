@@ -267,6 +267,47 @@ def test_an_acceptable_replacement_stops_the_reminders(env):
     assert data.follow_up(conn, CASE)["requests"][0]["status"] == "Completed"
 
 
+def test_reminders_go_while_an_analyst_holds_another_document_but_it_never_auto_closes(env):
+    """The bank statement goes to an analyst (mock mode's visual check); the
+    proof of address is still owed. The customer is reminded on schedule, but
+    the case is not withdrawn while the team still has work on it."""
+    conn = env["conn"]
+    extra = add_second_item(conn)
+    request(conn)
+    data.upload_document(conn, CASE, extra, "statement.pdf", PDF)
+    open_now = holds.open_holds(conn, CASE)
+    assert any(h.owner == "analyst" for h in open_now), "an analyst holds the statement"
+    assert [i["document_type"] for i in communication.owed_items(conn, CASE)] == \
+        ["proof_of_address"], "the customer still owes the other item"
+
+    assert run_days(env, CLOSE + 10) == {REMIND: "reminder"}, \
+        "reminded on schedule; not closed while the customer is not the sole blocker"
+    body = conn.execute("SELECT o.body FROM outbox o JOIN communication c USING"
+                        " (communication_id) WHERE c.case_id = ? AND c.situation = 'reminder'",
+                        (CASE,)).fetchone()[0]
+    assert "proof of address" in body and "bank statement" not in body, \
+        "the item under review is not asked for again"
+    assert conn.execute("SELECT status FROM onboarding_case WHERE case_id = ?",
+                        (CASE,)).fetchone()[0] != "closed_withdrawn"
+    f = data.follow_up(conn, CASE)
+    assert f["closes_on"] is None and f["closure_paused"]
+
+    # Once the team has nothing left, the customer is the only blocker, and the
+    # limit - still counted from the first request - applies at once.
+    held = conn.execute("SELECT MAX(document_id) FROM checklist_item_document WHERE item_id = ?",
+                        (extra,)).fetchone()[0]
+    data.release_document(conn, held, "analyst.test", "accept", "looked at it: clear")
+    for document_id, fields in data.awaiting_fields(conn, CASE).items():
+        data.enter_fields(conn, document_id, "analyst.test",
+                          {f["name"]: "synthetic" for f in fields})
+    assert [h.owner for h in holds.open_holds(conn, CASE)] == ["customer"]
+    assert communication.customer_blocking(conn, CASE)[1]
+    closed = communication.chase(conn, CASE, KB, env["clock"])
+    assert closed is not None and conn.execute(
+        "SELECT status FROM onboarding_case WHERE case_id = ?",
+        (CASE,)).fetchone()[0] == "closed_withdrawn"
+
+
 def test_case_14_still_auto_closes_on_its_existing_schedule(env):
     assert (REMIND, CLOSE) == (14, 30), "the schedule itself is unchanged"
     conn = env["conn"]

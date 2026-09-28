@@ -568,7 +568,10 @@ after 14 days, closed_withdrawn after 30, both counted from the FIRST request
 (communication.first_request_at) - a new upload or attempt never resets them.
 The reminder is one message listing every item still owed, under the approved
 request wording (TPL-0001, situation `reminder`); the dataset used TPL-0005, a
-status update that names no items. Reminders stop when nothing is owed any more
+status update that names no items. Reminders go whenever the customer owes at
+least one item, even while another hold (an analyst on a different document)
+is open; the automatic closure happens only when the customer is the sole
+remaining blocker. Reminders stop when nothing is owed any more
 (an acceptable replacement, a waived item, an item handed to an analyst after 3
 unreadable uploads) or the case is closed. A re-upload re-runs Step 3 for that
 checklist item only.

@@ -1311,8 +1311,10 @@ def _follow_up_panel(conn, case_id) -> str:
             + help_mark("One row per request sent to the customer. Reminders follow the "
                         "schedule in kb/communication_schedule.csv only: viewing a message "
                         "never delays or stops one. One reminder lists every item still "
-                        "outstanding. The no-response limit counts from the first request "
-                        "and a new upload never resets it.")
+                        "outstanding, and goes even while another hold is open. The "
+                        "no-response limit counts from the first request, a new upload never "
+                        "resets it, and it closes the case only when the customer is the "
+                        "sole remaining blocker.")
             + "</h2>")
     if not f["requests"]:
         owed = (" The customer currently owes: " + e(", ".join(f["owed"])) + "."
@@ -1341,7 +1343,10 @@ def _follow_up_panel(conn, case_id) -> str:
              + e(zone) + " if nothing acceptable arrives, counted from the first request on "
              + _when(f["first_request_at"], zone) + ". A new upload does not reset it; after "
              + str(f["attempt_limit"]) + " unreadable uploads an item goes to an analyst."
-             if f["closes_on"] else "")
+             if f["closes_on"] else
+             "Reminders continue on schedule, but the case will not close for want of a reply "
+             "while another hold is open: the customer is not the only blocker."
+             if f["closure_paused"] else "")
     return (head
             + table(["Request", "Document(s) requested", "Request sent", "Delivery", "Viewed",
                      "Next reminder due", "Reminder history", "Follow-up status"], rows)
