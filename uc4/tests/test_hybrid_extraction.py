@@ -349,3 +349,46 @@ def test_the_vaher_studio_pack_is_recognised_file_by_file():
     from orchestrator import providers
     found = providers.lookup_register(manifest["register"]["number"])
     assert found and found["legal_name"] == "Vaher Studio OÜ"
+
+
+def test_files_set_up_for_typing_before_they_were_recognised_can_be_read(conn, pack, tmp_path,
+                                                                           monkeypatch):
+    """What happened to WAL-DEMO-0001: the files were uploaded, accepted by an
+    analyst and set up for typing before the pack was recognised. Once it is,
+    the recorded fields replace the empty rows - and nothing typed is touched."""
+    c = conn
+    monkeypatch.setattr(settings, "EXTRACTION_FOR_NEW_UPLOADS", "mock_only")
+    monkeypatch.setattr(demo_samples, "MANIFEST", tmp_path / "no_manifest.json")
+    monkeypatch.setattr(demo_samples, "PACKS", tmp_path / "no_packs")
+    case_id = apply_for(c)
+    for name in pack_files(pack):
+        upload(c, case_id, pack, name, recognised=True)      # exact bytes, not yet known
+    for name in pack_files(pack):
+        data.release_document(c, current(c, case_id, name)["document_id"], "analyst.test",
+                              "accept", "looked at it")
+        data.carry_on(c, case_id)
+    typed = current(c, case_id, "Tax registration certificate")["document_id"]
+    data.enter_fields(c, typed, "analyst.test", {"vat_number": "EE-TYPED"})
+    assert any("fields not read automatically" in h.reason for h in data.open_holds(c, case_id))
+    assert data.recognised_awaiting(c, case_id) == []
+
+    monkeypatch.setattr(demo_samples, "MANIFEST", pack / "manifest.json")     # the pack arrives
+    stale = data.recognised_awaiting(c, case_id)
+    assert typed not in {d["document_id"] for d in stale} and len(stale) >= 8
+    page = console.case_detail(c, case_id, tab="Documents")
+    assert "/action/read-recognised" in page
+
+    assert data.read_recognised_samples(c, case_id) == len(stale)
+    assert not any("fields not read automatically" in h.reason for h in data.open_holds(c, case_id))
+    assert data.recognised_awaiting(c, case_id) == []
+    for d in stale:
+        rows = fields_of(c, d["document_id"])
+        assert rows and all(r["entry_method"] == "extracted" for r in rows)
+    kept = fields_of(c, typed)
+    assert {r["entry_method"] for r in kept} == {"entered_by_analyst"}, "typed rows stand"
+    assert next(r["value"] for r in kept if r["name"] == "vat_number") == "EE-TYPED"
+    page = console.case_detail(c, case_id, tab="Documents")
+    assert "/action/read-recognised" not in page
+    block = next(b for b in blocks(page) if "<h3>Fields</h3>" in b and 'stored as <span class="type">'
+                 + current(c, case_id, "Certificate of incorporation")["file_name"] in b)
+    assert data.DEMO_SAMPLE_LABEL in block.split("<h3>Fields</h3>", 1)[1]

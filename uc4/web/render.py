@@ -637,6 +637,19 @@ def _tab_documents(conn, case_id, role="analyst", reviewer="analyst.demo", **kw)
     queued = data.live_queued_documents(conn, case_id)
     in_queue = data.live_queue_length(conn) if queued else 0
     reading = ("Reading automatically... (" + str(in_queue) + " in queue)")
+    sample_fields = data.recognised_fields(conn, case_id)
+    stale = data.recognised_awaiting(conn, case_id)
+    if stale:
+        out.append(
+            note(str(len(stale)) + " document(s) waiting to be typed in are recognised demo "
+                 "sample files (" + ", ".join(e(d["document_id"]) for d in stale) + "). Their "
+                 "fields are on record, so they can be read instead of typed.", "info",
+                 "Recognised demo samples")
+            + '<form method="post" action="/action/read-recognised">'
+            '<input type="hidden" name="case_id" value="' + e(case_id) + '">'
+            '<input type="hidden" name="back" value="/case/' + e(case_id) + '?tab=Documents">'
+            '<button class="btn btn--primary" type="submit">Read their recorded fields'
+            "</button></form>")
     for doc in documents:
         replayed = doc["document_id"] in recognised
         held = doc["quality_status"] == "manual_review_required"
@@ -734,7 +747,7 @@ def _tab_documents(conn, case_id, role="analyst", reviewer="analyst.demo", **kw)
                        and not keyed)
                 if keyed:
                     state = chip("entered by an analyst", tone="info")
-                elif replayed:
+                elif replayed or doc["document_id"] in sample_fields:
                     state = chip(data.DEMO_SAMPLE_LABEL, tone="warn")
                 elif doc["document_id"] in live["fields"]:
                     state = chip(live["fields"][doc["document_id"]], tone="info") + (

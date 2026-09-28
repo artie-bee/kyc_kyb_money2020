@@ -69,6 +69,16 @@ def recognise(content: bytes | None = None, path: str | Path | None = None) -> d
     return _files().get(hashlib.sha256(content).hexdigest())
 
 
+def recognised_fields(conn, case_id: str) -> set[str]:
+    """Document ids whose FIELDS were replayed from a manifest (Step 4's record).
+    Not the same as recognised_documents: a file accepted by an analyst before
+    it was recognised has a person's quality verdict and a sample's fields."""
+    return {payload.split(" ", 1)[0] for (payload,) in conn.execute(
+        "SELECT payload_summary FROM audit_event WHERE case_id = ?"
+        " AND action = 'fields_extracted' AND payload_summary LIKE ?",
+        (case_id, f"%{LABEL}%"))}
+
+
 def recognised_documents(conn, case_id: str) -> set[str]:
     """Document ids on this case whose quality verdict was replayed from the
     manifest, read back from the audit trail where Step 3 recorded it."""

@@ -76,6 +76,19 @@ def run(conn, case_id: str, application: dict, kb: KnowledgeBase,
     already = {r["document_id"] for r in conn.execute(
         "SELECT DISTINCT document_id FROM extracted_field f JOIN document d"
         " USING (document_id) WHERE d.case_id = ?", (case_id,))}
+    if extractor.mode == "mock":
+        # A portal upload set up for typing before its file was a recognised
+        # demo sample (the pack was added later) is read now, like any other
+        # recognised file. Only rows nobody has typed into are replaced.
+        for d in documents:
+            if d["document_id"] in already and recognised_awaiting(conn, case_id, d):
+                conn.execute("DELETE FROM extracted_field WHERE document_id = ?"
+                             " AND entry_method = 'awaiting_analyst_entry'", (d["document_id"],))
+                db.audit(conn, case_id, "system", ACTOR, "awaiting_fields_replaced_by_sample",
+                         f"{d['document_id']} ({d['document_type']}, {d['file_name']}): now a "
+                         f"{demo_samples.LABEL}; the empty rows set up for typing are replaced "
+                         f"by its recorded fields", kb.version)
+                already.discard(d["document_id"])
     documents = [d for d in documents if d["document_id"] not in already
                  and (document_ids is None or d["document_id"] in document_ids)]
     payload_by_name = {d["file_name"]: d for d in application.get("documents", [])}
@@ -214,6 +227,17 @@ def run(conn, case_id: str, application: dict, kb: KnowledgeBase,
 
     return route_case(conn, case_id, kb, len(documents), n_fields, low_conf, missing_req,
                       conflicts, problems)
+
+
+def recognised_awaiting(conn, case_id: str, doc) -> bool:
+    """Is this a portal upload whose fields are all still waiting to be typed in,
+    and whose file is a recognised demo sample of the same document type?"""
+    methods = {r[0] for r in conn.execute(
+        "SELECT entry_method FROM extracted_field WHERE document_id = ?", (doc["document_id"],))}
+    if methods != {"awaiting_analyst_entry"}:
+        return False
+    sample = demo_samples.recognise(path=document_quality.UPLOADS / case_id / doc["file_name"])
+    return sample is not None and sample["document_type"] == doc["document_type"]
 
 
 def route_case(conn, case_id: str, kb: KnowledgeBase, documents_read: int = 0,

@@ -370,6 +370,11 @@ class Handler(BaseHTTPRequestHandler):
             return ("Document " + result["document_id"] + ": " + str(len(result["entered"]))
                     + " field(s) entered by " + reviewer + "." + extra)
 
+        if path == "/action/read-recognised":
+            n = data.read_recognised_samples(conn, form["case_id"])
+            return (str(n) + " document(s) read from the recognised demo sample record; "
+                    "their fields are labelled " + data.DEMO_SAMPLE_LABEL + ".")
+
         if path == "/action/demo-scenario":
             chosen = data.choose_demo_scenario(conn, form["case_id"], form.get("scenario", ""),
                                                reviewer)

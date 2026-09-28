@@ -794,6 +794,26 @@ def recognised_documents(conn, case_id: str) -> set:
     return demo_samples.recognised_documents(conn, case_id)
 
 
+def recognised_fields(conn, case_id: str) -> set:
+    return demo_samples.recognised_fields(conn, case_id)
+
+
+def recognised_awaiting(conn, case_id: str) -> list:
+    """Documents set up for typing whose file is now a recognised demo sample."""
+    return [d for d in document_quality.accepted_documents(conn, case_id)
+            if extraction.recognised_awaiting(conn, case_id, d)]
+
+
+def read_recognised_samples(conn, case_id: str) -> int:
+    """Step 4 again for the case: recognised samples still waiting to be typed in
+    get their recorded fields; nothing else changes. Then the case carries on."""
+    n = len(recognised_awaiting(conn, case_id))
+    extraction.run(conn, case_id, _application(case_id, conn), kb())
+    conn.commit()
+    carry_on(conn, case_id)
+    return n
+
+
 def rescreen_document(conn, document_id, actor, reason):
     """Step 3 again on a stored portal upload; the case carries on if it can."""
     result = document_quality.rescreen_document(conn, document_id, actor, reason, kb(),
