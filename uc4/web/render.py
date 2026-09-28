@@ -633,8 +633,14 @@ def _tab_documents(conn, case_id, role="analyst", reviewer="analyst.demo", **kw)
     for doc in documents:
         replayed = doc["document_id"] in recognised
         held = doc["quality_status"] == "manual_review_required"
-        flags = ('<span class="type">[' + e(doc["quality_flags"]) + "]</span>"
-                 if doc["quality_flags"] else "")
+        # The visual-check marker says what Step 3 could not do. Once a person
+        # has looked, it no longer describes the document, so it is not shown.
+        shown_flags = [f for f in (doc["quality_flags"] or "").split("|")
+                       if f and not (f == "visual_check_not_run" and not held)]
+        flags = ('<span class="type">[' + e("|".join(shown_flags)) + "]</span>"
+                 if shown_flags else "")
+        if doc["released_by"] and not held and doc["quality_status"] != "superseded":
+            flags += chip("released by " + doc["released_by"], tone="ok")
         own_name = names.get(doc["file_name"])
         by_applicant = (chip("uploaded by applicant", tone="info")
                         if own_name is not None else "")
@@ -684,8 +690,13 @@ def _tab_documents(conn, case_id, role="analyst", reviewer="analyst.demo", **kw)
                 '<form method="post" action="/action/release-document">'
                 '<input type="hidden" name="document_id" value="' + e(doc["document_id"]) + '">'
                 '<input type="hidden" name="back" value="/case/' + e(case_id) + '?tab=Documents">'
-                '<div class="field"><label>Reason</label>'
+                '<div class="field"><label>Reason (internal, on the record)</label>'
                 '<input type="text" name="reason" required></div>'
+                '<div class="field"><label>If sending it back: what the customer is told'
+                "</label><select name=\"reason_code\"><option value=\"\">Choose a reason..."
+                "</option>" + "".join(
+                    '<option value="' + e(code) + '">' + e(text) + "</option>"
+                    for code, text in data.resubmission_reasons()) + "</select></div>"
                 '<div class="btn-row">'
                 '<button class="btn btn--primary" name="choice" value="accept"'
                 ' data-shortcut="a">Accept</button>'

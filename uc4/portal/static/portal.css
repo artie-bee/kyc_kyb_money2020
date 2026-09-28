@@ -161,7 +161,9 @@ h2 { font-size:17px; font-weight:600; margin:28px 0 10px; }
 .nextstep__reason { margin:6px 0 0; color:var(--fg-mute); }
 .item__tips { margin:10px 0 0; font-size:13.5px; color:var(--fg-mute); }
 .item__tip { margin:2px 0; padding-left:14px; position:relative; }
-.item__tip::before { content:"2"; position:absolute; left:2px; color:var(--fg-faint); }
+/* the bullet is drawn, not typed: no character a font could lack */
+.item__tip::before { content:""; position:absolute; left:3px; top:.62em; width:5px; height:5px;
+                     border-radius:50%; background:var(--fg-faint); }
 .lookup { margin-top:6px; }
 
 /* ---------- 3. Messages -------------------------------------------------- */

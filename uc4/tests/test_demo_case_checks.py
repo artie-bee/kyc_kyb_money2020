@@ -136,7 +136,8 @@ def test_an_unrecognised_id_stays_held_and_the_case_never_gets_ready(conn, pack)
     # Only an analyst's decision on the document moves it: here, send it back.
     held = conn.execute("SELECT document_id FROM document WHERE case_id = ?"
                         " AND quality_status = 'manual_review_required'", (case_id,)).fetchone()[0]
-    data.release_document(conn, held, "analyst.test", "request_resubmission", "not legible")
+    data.release_document(conn, held, "analyst.test", "request_resubmission", "not legible",
+                          reason_code="document_unreadable")
     assert not visual_holds(conn, case_id)
     assert items(conn, case_id)[ID_ITEM]["status"] == "Resubmission needed"
 
@@ -246,7 +247,7 @@ def _expected_from_console(conn, case_id):
         if item["status"] == "resubmission_requested":
             s = "Resubmission needed"
         elif item["status"] == "accepted":
-            s = "Under review" if reading else "Accepted"
+            s = "Accepted"          # accepted is accepted, whether or not read yet
         elif item["status"] == "manual_review" or current:
             s = "Under review"
         else:

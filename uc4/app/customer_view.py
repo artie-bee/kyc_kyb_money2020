@@ -238,20 +238,27 @@ def _steps(conn, case_id: str, case, applied_on: str) -> list[dict]:
 
 
 def _item_status(item, current, being_read=False) -> str:
-    """One of the four customer statuses, from the records as they stand now."""
+    """One of the four customer statuses, from the checklist item's recorded
+    outcome. An accepted document is Accepted the moment it is accepted, by the
+    quality screen or by an analyst: reading its fields afterwards is internal
+    work, not something the customer is waiting on."""
     if item["status"] == "resubmission_requested":
         return RESUBMIT
     if item["status"] == "accepted":
-        return UNDER_REVIEW if being_read else ACCEPTED
+        return ACCEPTED
     if item["status"] == "manual_review" or current is not None:
         return UNDER_REVIEW
     return NOT_UPLOADED
 
 
-def _reason(current, rule: dict | None, kb: KnowledgeBase) -> str:
+def _reason(current, rule: dict | None, kb: KnowledgeBase, restricted: bool = False) -> str:
     """The approved wording (kb/resubmission_reason_text.csv) for why this
-    document must be sent again. Never empty: "*" covers any other reason."""
+    document must be sent again - the reason the screen found, or the one the
+    analyst chose. Never empty: "*" covers any other reason, and is all a case
+    with a restricted finding is ever told."""
     texts = kb.resubmission_reason_text
+    if restricted:
+        return texts["*"]["customer_text"]
     codes = [c for c in ((current["resubmission_reasons"] if current else "") or "").split("|")
              if c]
     code = next((c for c in codes if c in texts), "*")
@@ -353,7 +360,8 @@ def customer_checklist(conn, case_id: str, kb: KnowledgeBase | None = None) -> d
             "person": "" if generic else (item["full_name"] or ""),
             "optional": item["level"] == "optional",
             "status": status,
-            "reason": _reason(current, rules.get(item["rule_id"]), kb) if status == RESUBMIT
+            "reason": _reason(current, rules.get(item["rule_id"]), kb, restricted)
+            if status == RESUBMIT
             else "",
             "can_upload": open_case and item["status"] in OPEN_FOR_UPLOAD,
             # guidance only, never a requirement; ages come from the item's rule

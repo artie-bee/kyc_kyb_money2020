@@ -341,7 +341,8 @@ def route_case(conn, case_id: str, kb: KnowledgeBase,
     # counting it again would hold the case open forever. Documents matching no
     # checklist item are counted too, so an unsolicited failure is not lost.
     docs = conn.execute(
-        "SELECT d.quality_status, d.quality_flags FROM document d WHERE d.case_id = ?"
+        "SELECT d.document_id, d.document_type, d.quality_status, d.quality_flags"
+        " FROM document d WHERE d.case_id = ?"
         " AND d.document_id IN ("
         "  SELECT MAX(cid.document_id) FROM checklist_item_document cid"
         "  JOIN document d2 ON d2.document_id = cid.document_id"
@@ -365,18 +366,32 @@ def route_case(conn, case_id: str, kb: KnowledgeBase,
 
     # This step re-runs after an analyst release, so it lifts its own holds first
     # and places whatever the current picture warrants. It never touches another
-    # step's hold.
-    holds.release_own(conn, case_id, ACTOR, "document quality re-evaluated", kb)
+    # step's hold. The one exception is the visual-check hold, which belongs to a
+    # single document: each stays until that document is dealt with, so one
+    # document is never held back by another's hold.
+    visual_docs = {d["document_id"]: d for d in docs
+                   if d["quality_status"] == "manual_review_required"
+                   and VISUAL_MARKER in (d["quality_flags"] or "").split("|")}
+    visual_holds = {}
+    for h in holds.open_holds(conn, case_id):
+        if h.placed_by_step != ACTOR:
+            continue
+        doc_id = visual_hold_document(h.reason)
+        if doc_id and doc_id in visual_docs:
+            visual_holds[doc_id] = h            # still applies: keep it as it is
+        else:
+            holds.release(conn, h.hold_id, ACTOR, "document quality re-evaluated",
+                          by_step=ACTOR, kb=kb)
+    for doc_id, d in visual_docs.items():
+        if doc_id not in visual_holds:
+            holds.place(conn, case_id, ACTOR, "manual_review",
+                        f"{VISUAL_CHECK_NOT_RUN}: {doc_id} ({d['document_type']}) waiting "
+                        f"for an analyst to look at it", "analyst", kb)
 
     if held or counts["manual_review_required"]:
         n = len(held) or counts["manual_review_required"]
         summary = f"{n} item(s) need an analyst"
-        visual = sum(1 for d in docs if d["quality_status"] == "manual_review_required"
-                     and VISUAL_MARKER in (d["quality_flags"] or "").split("|"))
-        if visual:
-            holds.place(conn, case_id, ACTOR, "manual_review",
-                        f"{VISUAL_CHECK_NOT_RUN}: {visual} uploaded document(s) waiting for "
-                        f"an analyst to look at them", "analyst", kb)
+        visual = len(visual_docs)
         if n > visual:
             holds.place(conn, case_id, ACTOR, "manual_review",
                         f"{n - visual} document(s) flagged for an analyst at the quality screen",
@@ -637,6 +652,16 @@ def uploaded_names(conn, case_id: str) -> dict:
         if m:
             out[m.group(2)] = json.loads(m.group(1))
     return out
+
+
+_VISUAL_HOLD = re.compile(r"^manual_review: " + re.escape(VISUAL_CHECK_NOT_RUN)
+                          + r": (DOC-\d+) ")
+
+
+def visual_hold_document(reason: str) -> str | None:
+    """The document a visual-check hold is for, from its reason."""
+    m = _VISUAL_HOLD.match(reason or "")
+    return m.group(1) if m else None
 
 
 def rescreen_document(conn, document_id: str, actor: str, reason: str, kb: KnowledgeBase,

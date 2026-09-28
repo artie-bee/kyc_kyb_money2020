@@ -164,7 +164,8 @@ def test_the_next_step_follows_an_upload_and_an_analyst_action(conn, pack):
     held = c.execute("SELECT document_id FROM document WHERE case_id = 'WAL-ONB-0002' AND"
                      " document_type = 'id_document' AND quality_status ="
                      " 'manual_review_required'").fetchone()[0]
-    data.release_document(c, held, "analyst.test", "request_resubmission", "cropped")
+    data.release_document(c, held, "analyst.test", "request_resubmission", "cropped",
+                          reason_code="document_incomplete")
     again = step_for(c, "WAL-ONB-0002")
     assert again["kind"] == "upload" and "Identity document" in again["text"]
     assert again["item"]["reason"]

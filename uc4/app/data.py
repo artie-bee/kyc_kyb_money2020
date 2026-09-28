@@ -477,10 +477,18 @@ def carry_on(conn, case_id: str) -> dict:
     conn.commit()
     return trace
 
-def release_document(conn, document_id, analyst_id, choice, reason):
+def resubmission_reasons() -> list[tuple[str, str]]:
+    """(code, customer wording) an analyst may choose when sending a document back."""
+    texts = kb().resubmission_reason_text
+    return [(code, texts[code]["customer_text"].replace("{days}", "N"))
+            for code in analyst_review.resubmission_reason_codes(kb())]
+
+
+def release_document(conn, document_id, analyst_id, choice, reason, reason_code=None):
     case_id = conn.execute("SELECT case_id FROM document WHERE document_id = ?",
                            (document_id,)).fetchone()[0]
-    result = analyst_review.release_document(conn, document_id, analyst_id, choice, reason, kb())
+    result = analyst_review.release_document(conn, document_id, analyst_id, choice, reason,
+                                             kb(), reason_code=reason_code)
     conn.commit()
     # If extraction has already run and left a hold of its own, its wording was
     # written when the document was still held. Releasing the document does not

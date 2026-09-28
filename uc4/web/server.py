@@ -306,7 +306,8 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/action/release-document":
             result = data.release_document(
                 conn, form["document_id"], reviewer,
-                form.get("choice", "accept"), form.get("reason", ""))
+                form.get("choice", "accept"), form.get("reason", ""),
+                reason_code=form.get("reason_code") or None)
             return "Document " + result.document_id + ": " + result.decision
 
         if path == "/action/field":
