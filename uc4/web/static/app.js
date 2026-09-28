@@ -112,8 +112,10 @@
 
   function apply() {
     var st = checked("status"), ow = checked("owner"), n = 0;
+    var waitingOnly = checked("waiting")["1"];
     rows.forEach(function (tr) {
-      var ok = st[tr.dataset.status] && (ow[tr.dataset.owner] || !tr.dataset.owner);
+      var ok = st[tr.dataset.status] && (ow[tr.dataset.owner] || !tr.dataset.owner)
+        && (!waitingOnly || tr.dataset.waiting === "1");
       tr.hidden = !ok;
       if (ok) n++;
     });

@@ -66,6 +66,21 @@ class FakeClock(Clock):
         return self._now.date()
 
 
+class OffsetClock(Clock):
+    """Another clock, moved forward by whole days: the console's demo clock.
+
+    The offset is read from the audit trail (app/data.demo_clock_days), so the
+    console and the portal agree on the date, and Reset demo - which rebuilds
+    the database - puts it back to zero.
+    """
+
+    def __init__(self, base: Clock, days: int):
+        self.base, self.days = base, days
+
+    def now(self) -> datetime:
+        return self.base.now() + timedelta(days=self.days)
+
+
 _current: Clock = SystemClock()
 
 

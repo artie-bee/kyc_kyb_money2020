@@ -140,6 +140,15 @@ a { color:var(--accent); }
       color:var(--rail-faint); }
 .kv code { font-family:var(--mono); font-size:11px; color:var(--rail-mute); }
 
+/* The demo clock: amber, so nobody takes it for real time. */
+.democlock { display:flex; flex-direction:column; gap:6px; padding:10px;
+             border:1px dashed #c9a24a; border-radius:var(--r); }
+.democlock .rail__label { color:#e8c877; margin:0; }
+.democlock__now { margin:0; font-size:12.5px; color:var(--rail-fg); font-family:var(--mono); }
+.democlock__ahead { color:#e8c877; }
+.democlock__row { display:flex; gap:6px; }
+.democlock__row .btn { flex:1; }
+
 /* The sidebar "Customer" card: latest message and case state. */
 .railcard { display:flex; flex-direction:column; gap:4px; margin-top:12px;
             padding:10px; border:1px solid var(--rail-line); border-radius:var(--r);

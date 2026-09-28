@@ -285,7 +285,7 @@ Both are synthetic specimens. Never upload a real document.
 | "What about a confirmed sanctions hit?" | **Case 12** — clear match, critical. See *Case 12 steps* below: the decision alone sends nothing, and compliance approves the customer message as a separate step. |
 | "What if the company doesn't exist any more?" | **Case 11** — dissolved on the register; eligibility floor recommends reject; analyst agrees. |
 | "What if a provider is down?" | **Case 13** — unavailable media check never counts as a pass; the case is held as insufficient evidence. |
-| "What if the customer just stops replying?" | **Case 14** — held for the customer, awaiting a proof of address. The reminder schedule is `kb/communication_schedule.csv`; the demo database stops at the hold rather than fast-forwarding a month, and `python tools/run_demo.py` plays the thirty days out and closes the case as withdrawn. |
+| "What if the customer just stops replying?" | **Case 14** — held for the customer, awaiting a proof of address. The reminder schedule is `kb/communication_schedule.csv`. On the dashboard, tick **Waiting on customer**: case 14 shows *waiting since* and *next reminder due*. Then use the sidebar's **Demo clock - not real time**: four clicks of **+7 days** and two of **+1 day** reach day 30 — the reminder goes on day 14 and case 14 closes as withdrawn on day 30. **Reset demo** puts the clock back. |
 
 ### Case 12 steps — confirmed sanctions match · WAL-ONB-0012 · 3 min
 

@@ -31,6 +31,7 @@ UC4 = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(UC4))
 
 from app import data                                                  # noqa: E402
+from orchestrator import clock                                        # noqa: E402
 from web import render                                                # noqa: E402
 
 STATIC = Path(__file__).resolve().parent / "static"
@@ -127,11 +128,23 @@ class Handler(BaseHTTPRequestHandler):
         raw = self.rfile.read(length).decode("utf-8") if length else ""
         return {k: v[0] for k, v in parse_qs(raw, keep_blank_values=True).items()}
 
+    # -- the demo clock -----------------------------------------------------
+    # Every request runs on the demo clock: the clock in force, moved forward
+    # by however many days the demo clock has been advanced (zero until it is).
+    # Swapped inside the lock, because the clock is one process-wide setting.
+    def do_GET(self):
+        with _lock, clock.use(data.demo_clock(connection())):
+            self._get()
+
+    def do_POST(self):
+        with _lock, clock.use(data.demo_clock(connection())):
+            self._post()
+
     # -- GET --------------------------------------------------------------
     def do_HEAD(self):
         self.do_GET()
 
-    def do_GET(self):
+    def _get(self):
         url = urlparse(self.path)
         path = url.path
         query = parse_qs(url.query)
@@ -262,7 +275,7 @@ class Handler(BaseHTTPRequestHandler):
                                  'attachment; filename="' + case_id + '.json"'})
 
     # -- POST -------------------------------------------------------------
-    def do_POST(self):
+    def _post(self):
         path = urlparse(self.path).path
         form = self._form()
         back = form.get("back") or "/"
@@ -311,6 +324,13 @@ class Handler(BaseHTTPRequestHandler):
             data.reset_demo()
             connection()
             return "Reset. Every case is back at its first human action."
+
+        if path == "/action/demo-clock":
+            result = data.advance_demo_clock(conn, int(form.get("days") or 0), reviewer)
+            return (data.DEMO_CLOCK_LABEL + ": advanced " + str(result["days"])
+                    + " day(s) to " + result["date"] + " (+" + str(result["total"])
+                    + " in total); " + str(len(result["sent"]))
+                    + " scheduled message(s) sent.")
 
         if path == "/action/release-document":
             result = data.release_document(

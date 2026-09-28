@@ -38,6 +38,7 @@ UC4 = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(UC4))
 
 from app import data                                                  # noqa: E402
+from orchestrator import clock                                        # noqa: E402
 from app.customer_view import (customer_checklist, customer_view,        # noqa: E402
                                demo_card, leaks, next_step)
 from orchestrator.steps.document_quality import MAX_UPLOAD_BYTES, UploadRefused  # noqa: E402
@@ -132,11 +133,29 @@ class Handler(BaseHTTPRequestHandler):
     def _connect(self):
         return data.connect(self.server.db_path)
 
+    # The portal has no demo clock of its own and shows none. It only keeps
+    # the console's date: when the presenter has advanced the demo clock, an
+    # upload or a view here is stamped on the same day the console is on.
+    def _clock(self):
+        conn = self._connect()
+        try:
+            return data.demo_clock(conn)
+        finally:
+            conn.close()
+
+    def do_GET(self):
+        with _lock, clock.use(self._clock()):
+            self._get()
+
+    def do_POST(self):
+        with _lock, clock.use(self._clock()):
+            self._post()
+
     # -- GET --------------------------------------------------------------
     def do_HEAD(self):
         self.do_GET()
 
-    def do_GET(self):
+    def _get(self):
         url = urlparse(self.path)
         path = url.path
         query = parse_qs(url.query)
@@ -220,7 +239,7 @@ class Handler(BaseHTTPRequestHandler):
         return self._redirect("/", cookies=[_session_cookie(token)])
 
     # -- POST -------------------------------------------------------------
-    def do_POST(self):
+    def _post(self):
         path = urlparse(self.path).path
         length = int(self.headers.get("Content-Length") or 0)
         if length > MAX_BODY:

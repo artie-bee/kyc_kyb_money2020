@@ -38,6 +38,8 @@ ACTOR = "step.communication"
 # starts at the first of them (first_request_at) and never restarts.
 REQUEST_SITUATIONS = ("resubmission", "clarification", "missing_items")
 REMINDER = "reminder"
+# The optional early nudge on an unviewed request (kb/communication_schedule.csv).
+NUDGE = "unviewed_nudge"
 # What a send is, as far as the POC can say: written to the outbox table. There
 # is no mail gateway to report delivery, so nothing is ever called "delivered".
 DELIVERY_LABEL = "Simulated - sent to demo outbox"
@@ -321,7 +323,7 @@ def send_required_message(conn, case_id: str, situation: str, kb: KnowledgeBase,
         (comm_id, case_id, choice.template_id, rule["audience"], template["message_type"],
          situation, approval, approver, "not_sent", text, db.now()))
     asked = ""
-    if situation in REQUEST_SITUATIONS + (REMINDER,):
+    if situation in REQUEST_SITUATIONS + (REMINDER, NUDGE):
         asked = _ITEMS_REQUESTED + (", ".join(i["item_id"] for i in owed_items(conn, case_id))
                                     or "none")
     db.audit(conn, case_id, "ai_agent", ACTOR, "communication_drafted",
@@ -413,8 +415,10 @@ def chase(conn, case_id: str, kb: KnowledgeBase, clock: Clock,
     automatic closure is narrower: only when the customer is the sole
     remaining blocker, so a case is never withdrawn while the team still has
     work on it. Both deadlines count from the FIRST request and a new attempt
-    does not restart them. Whether the customer has viewed a message is never
-    read here: reminders follow the schedule only.
+    does not restart them. Whether the customer has viewed a message never
+    touches the schedule: reminders and closure follow it regardless. Views
+    are read only by the optional early nudge (unviewed_nudge), which is off
+    unless the KB sets a day count.
     """
     status = conn.execute("SELECT status FROM onboarding_case WHERE case_id = ?",
                           (case_id,)).fetchone()["status"]
@@ -427,10 +431,12 @@ def chase(conn, case_id: str, kb: KnowledgeBase, clock: Clock,
     waited = (clock.today() - date.fromisoformat(started[:10])).days
     already = {r["situation"] for r in conn.execute(
         "SELECT situation FROM communication WHERE case_id = ?", (case_id,))}
+    # An extra, never a substitute: the schedule below runs whatever it did.
+    nudged = _nudge(conn, case_id, kb, clock, chooser, approver)
 
     if waited >= kb.communication_schedule["close_after_days"] and sole_blocker:
         if "case_closed" in already:
-            return None
+            return nudged
         result = send_required_message(conn, case_id, "case_closed", kb, chooser, approver)
         for hold in waiting_on:
             holds.release(conn, hold.hold_id, approver,
@@ -444,7 +450,7 @@ def chase(conn, case_id: str, kb: KnowledgeBase, clock: Clock,
 
     if waited >= kb.communication_schedule["first_reminder_after_days"]:
         if REMINDER in already:
-            return None
+            return nudged
         result = send_required_message(conn, case_id, REMINDER, kb, chooser, approver)
         if result.communication_id is None:
             return result           # withheld or blocked; the step audited why
@@ -454,7 +460,53 @@ def chase(conn, case_id: str, kb: KnowledgeBase, clock: Clock,
                  + ", ".join(f"{i['item_id']} ({i['document_type']})" for i in owed),
                  kb.version)
         return result
-    return None
+    return nudged
+
+
+def _latest_request(conn, case_id: str):
+    """The most recent request sent to the customer (id, sent_at), or None."""
+    marks = ",".join("?" * len(REQUEST_SITUATIONS))
+    return conn.execute(
+        "SELECT c.communication_id, o.sent_at FROM outbox o JOIN communication c"
+        f" USING (communication_id) WHERE o.case_id = ? AND c.situation IN ({marks})"
+        " ORDER BY o.outbox_id DESC LIMIT 1", (case_id, *REQUEST_SITUATIONS)).fetchone()
+
+
+def _nudged_requests(conn, case_id: str) -> set:
+    return {m for (p,) in conn.execute(
+        "SELECT payload_summary FROM audit_event WHERE case_id = ?"
+        " AND action = 'unviewed_nudge_sent'", (case_id,)) for m in _COMM_ID.findall(p)[:1]}
+
+
+def nudge_due(conn, case_id: str, kb: KnowledgeBase) -> str | None:
+    """The date the optional nudge would go for the latest request, or None:
+    it is off (the KB's unviewed_nudge is 0), there is no request, the customer
+    has viewed it, or it has already had its one nudge."""
+    days = kb.communication_schedule.get(NUDGE, 0)
+    request = _latest_request(conn, case_id) if days > 0 else None
+    if (request is None or request["communication_id"] in _first_views(conn, case_id)
+            or request["communication_id"] in _nudged_requests(conn, case_id)):
+        return None
+    return _on_day(request["sent_at"], days)
+
+
+def _nudge(conn, case_id, kb, clock, chooser, approver) -> CommunicationResult | None:
+    """One short nudge on the latest request if, after the KB's day count, the
+    customer has not viewed it. At most one per request; off by default."""
+    due = nudge_due(conn, case_id, kb)
+    if due is None or clock.today().isoformat() < due:
+        return None
+    request = _latest_request(conn, case_id)
+    result = send_required_message(conn, case_id, NUDGE, kb, chooser, approver)
+    if result.communication_id is None:
+        return result
+    days = (clock.today() - date.fromisoformat(request["sent_at"][:10])).days
+    db.audit(conn, case_id, "system", ACTOR, "unviewed_nudge_sent",
+             f"{request['communication_id']} not viewed {days} days after it was sent; one "
+             f"nudge {result.communication_id} sent under the approved template "
+             f"(unviewed_nudge = {kb.communication_schedule[NUDGE]} days). The reminder "
+             f"schedule is unchanged", kb.version)
+    return result
 
 
 # ---------------------------------------------------------------------------
@@ -498,6 +550,35 @@ def _on_day(stamp: str, days: int) -> str:
     return (date.fromisoformat(stamp[:10]) + timedelta(days=days)).isoformat()
 
 
+def waiting_timing(conn, case_id: str, kb: KnowledgeBase) -> dict | None:
+    """For the dashboard, while the customer owes an item on an open case:
+    since when (the first request, which never resets), the customer's latest
+    view of any message, and the next message the schedule would send - the
+    optional nudge if it is on and due first, otherwise the reminder. None when
+    the customer owes nothing or the case is closed."""
+    status = conn.execute("SELECT status FROM onboarding_case WHERE case_id = ?",
+                          (case_id,)).fetchone()["status"]
+    started = first_request_at(conn, case_id)
+    if status in CLOSED_STATUSES or not started or not owed_items(conn, case_id):
+        return None
+    due = []
+    if not conn.execute("SELECT 1 FROM communication WHERE case_id = ? AND situation = ?",
+                        (case_id, REMINDER)).fetchone():
+        due.append((_on_day(started, kb.communication_schedule["first_reminder_after_days"]),
+                    "reminder"))
+    nudge = nudge_due(conn, case_id, kb)
+    if nudge:
+        due.append((nudge, "nudge"))
+    viewed = conn.execute("SELECT MAX(timestamp) FROM audit_event WHERE case_id = ? AND"
+                          " action = 'message_viewed'", (case_id,)).fetchone()[0]
+    nxt = min(due) if due else None
+    return {"since": started,
+            "days": (clock.current().today() - date.fromisoformat(started[:10])).days,
+            "last_viewed": viewed,
+            "next_due": nxt[0] if nxt else None, "next_kind": nxt[1] if nxt else None,
+            "timezone": TIMEZONE}
+
+
 def follow_up(conn, case_id: str, kb: KnowledgeBase) -> dict:
     """What the console's Customer follow-up panel shows: one entry per request
     sent to the customer, each with the items it asked for, when it was sent,
@@ -524,7 +605,7 @@ def follow_up(conn, case_id: str, kb: KnowledgeBase) -> dict:
         " JOIN communication c USING (communication_id) WHERE o.case_id = ?"
         " AND o.audience = 'applicant' ORDER BY o.outbox_id", (case_id,))]
     reminders = [dict(m, delivery=DELIVERY_LABEL, viewed_at=views.get(m["communication_id"]))
-                 for m in sent if m["situation"] == REMINDER]
+                 for m in sent if m["situation"] in (REMINDER, NUDGE)]
 
     requests = []
     for m in (m for m in sent if m["situation"] in REQUEST_SITUATIONS):

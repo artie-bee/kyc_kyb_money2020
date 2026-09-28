@@ -1,5 +1,5 @@
 {
-  "kb_version": "kb-2026.09-poc-v13",
+  "kb_version": "kb-2026.09-poc-v14",
   "items": {
     "applicant_type_rules": {
       "file": "applicant_type_rules.csv",
@@ -63,7 +63,7 @@
     },
     "communication_rules": {
       "file": "communication_rules.csv",
-      "version": "1.1",
+      "version": "1.2",
       "brief_section": "5.9, 11.3 - Which template for which situation"
     },
     "analyst_decision_taxonomy": {
@@ -78,7 +78,7 @@
     },
     "communication_schedule": {
       "file": "communication_schedule.csv",
-      "version": "1.0",
+      "version": "1.1",
       "brief_section": "5.9 - Reminder and closure timing"
     },
     "decision_reason_codes": {

@@ -10,6 +10,7 @@ the rules, and the second one is always the one that is wrong.
 tests/test_app.py scans this package for SQL writes and fails if it finds any.
 """
 
+import re
 import sys
 from datetime import date, datetime, timezone
 from pathlib import Path
@@ -127,8 +128,76 @@ def dashboard(conn) -> list[dict]:
             "hold_detail": "; ".join(f"{h.code} ({h.owner})" for h in open_now),
             "restricted": bool(case["restricted_finding"]),
             "ageing_days": ageing_days(case["created_at"]),
+            # None unless the customer owes an item on an open case
+            "waiting": communication.waiting_timing(conn, case["case_id"], kb()),
         })
     return out
+
+
+# ---------------------------------------------------------------------------
+# The demo clock (demo builds, analyst console only)
+# ---------------------------------------------------------------------------
+
+DEMO_CLOCK_LABEL = "Demo clock - not real time"
+_CLOCK_TOTAL = re.compile(r"total \+(\d+) day")
+
+
+def demo_clock_days(conn) -> int:
+    """How many days the demo clock stands ahead of the clock in force, read
+    from the audit trail: the highest total any advance recorded. A rebuilt
+    database (Reset demo) has none, so the clock is back at the start."""
+    best = 0
+    for (payload,) in conn.execute("SELECT payload_summary FROM audit_event"
+                                   " WHERE action = 'demo_clock_advanced'"):
+        m = _CLOCK_TOTAL.search(payload)
+        best = max(best, int(m.group(1))) if m else best
+    return best
+
+
+def demo_clock_enabled() -> bool:
+    return settings.DEMO_BUILD
+
+
+def today() -> str:
+    """Today on the clock in force (the demo clock, inside a console request)."""
+    return clock.current().today().isoformat()
+
+
+def demo_clock(conn) -> clock.Clock:
+    """The clock a demo request runs on: the one in force, moved forward by the
+    demo clock's days. The console and the portal both use it, so a customer
+    upload and a reminder can never disagree about the date."""
+    return clock.OffsetClock(clock.current(), demo_clock_days(conn))
+
+
+def advance_demo_clock(conn, days: int, actor: str) -> dict:
+    """Move the demo clock forward and run the normal schedule for every case,
+    one day at a time - reminders, nudges (if the KB turns them on) and the
+    no-response closure happen exactly as chase() says, on the day they fall.
+    Each advance is audited on every case."""
+    if not settings.DEMO_BUILD:
+        raise PermissionError("the demo clock exists only in a demo build")
+    if days not in (1, 7):
+        raise ValueError("the demo clock moves 1 or 7 days at a time")
+    if not (actor or "").strip():
+        raise ValueError("an advance needs a named person")
+    base, start = clock.current(), demo_clock_days(conn)
+    cases = [r[0] for r in conn.execute("SELECT case_id FROM onboarding_case ORDER BY case_id")]
+    with clock.use(clock.OffsetClock(base, start)):
+        target = clock.OffsetClock(base, start + days).today().isoformat()
+        for case_id in cases:
+            db.audit(conn, case_id, "analyst", actor, "demo_clock_advanced",
+                     f"{DEMO_CLOCK_LABEL}: advanced {days} day(s) by {actor}, to {target}; "
+                     f"total +{start + days} day(s). Demo build only", kb().version)
+    sent = []
+    for step in range(1, days + 1):
+        with clock.use(clock.OffsetClock(base, start + step)) as now:
+            for case_id in cases:
+                result = communication.chase(conn, case_id, kb(), now)
+                if result is not None and result.communication_id:
+                    sent.append((case_id, result.communication_id))
+    conn.commit()
+    return {"days": days, "total": start + days, "date": target, "sent": sent}
 
 
 # ---------------------------------------------------------------------------

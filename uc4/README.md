@@ -588,6 +588,30 @@ remaining blocker. Reminders stop when nothing is owed any more
 unreadable uploads) or the case is closed. A re-upload re-runs Step 3 for that
 checklist item only.
 
+The operations dashboard adds, for every case where the customer owes an item:
+"Waiting on customer since" (the first request, with days), "Last message
+viewed" (or "View not recorded") and "Next reminder due", all in UTC, with a
+"Waiting on customer" filter (communication.waiting_timing).
+
+Optional early nudge: `unviewed_nudge` in kb/communication_schedule.csv, 0 (off)
+by default. Set to N days and a request the customer has not viewed after N days
+gets one short nudge (situation `unviewed_nudge`, audited
+`unviewed_nudge_sent`), at most one per request. The normal reminder and closure
+run regardless of views.
+
+Demo clock (demo builds, analyst console only; `WALLESTER_UC4_DEMO_BUILD=0` turns
+it off): the sidebar's "Demo clock - not real time" moves the injected clock on
++1 or +7 days and runs the normal schedule for every case one day at a time, so
+reminders and case 14's day-30 closure fall exactly as the rules say. Each
+advance is audited (`demo_clock_advanced`) on every case; the offset is read
+back from those rows, so the portal keeps the same date (it shows no control),
+and Reset demo returns it to the start.
+
+Templates awaiting Wallester approval - interim reuse of approved wording until
+dedicated templates are approved:
+  - situation `reminder`       reuses TPL-0001 (resubmission request)
+  - situation `unviewed_nudge` reuses TPL-0001 (resubmission request)
+
 The console sidebar's "Customer" card (every case screen, never the portal)
 shows the latest message to the customer - subject, snippet, draft / awaiting
 compliance approval / sent, time in UTC, simulated delivery - and the case

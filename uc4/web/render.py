@@ -206,7 +206,8 @@ def page(title, body, active, conn=None, case_id=None, role="analyst",
         '      <input type="hidden" name="back" value="/">\n'
         '      <button class="btn btn--wide" type="submit">Reset demo</button>\n'
         "    </form>\n"
-        '    <div class="rail__foot">\n'
+        + _demo_clock_control(conn, case_id, active)
+        + '    <div class="rail__foot">\n'
         '      <div class="kv"><span>Knowledge base</span><code>'
         + e(data.kb().version) + "</code></div>\n"
         '      <button class="btn" type="button" id="theme">Toggle theme</button>\n'
@@ -215,6 +216,30 @@ def page(title, body, active, conn=None, case_id=None, role="analyst",
         '  <main class="main">\n' + flash_html + body + "\n  </main>\n"
         "</div>\n"
         '<script src="/static/app.js"></script>\n</body>\n</html>\n')
+
+
+def _demo_clock_control(conn, case_id, active) -> str:
+    """Demo builds only: move the demo clock on 1 or 7 days. The normal schedule
+    then runs - reminders, and case 14's closure on day 30. Every advance is
+    audited, and Reset demo puts the clock back to the start."""
+    if conn is None or not data.demo_clock_enabled():
+        return ""
+    days = data.demo_clock_days(conn)
+    back = (dict(SCREENS).get(active, "/") + case_id) if case_id and active in CASE_SCREENS \
+        else dict(SCREENS).get(active, "/")
+    buttons = "".join(
+        '<button class="btn" type="submit" name="days" value="' + str(n) + '">+' + str(n)
+        + (" day" if n == 1 else " days") + "</button>" for n in (1, 7))
+    return ('    <form method="post" action="/action/demo-clock" class="democlock"'
+            ' aria-label="Demo clock">\n'
+            '      <span class="rail__label">' + e(data.DEMO_CLOCK_LABEL) + "</span>\n"
+            '      <p class="democlock__now">' + e(data.today())
+            + " UTC" + (' <span class="democlock__ahead">(+' + str(days) + " day"
+                        + ("" if days == 1 else "s") + ")</span>" if days else "")
+            + "</p>\n"
+            '      <input type="hidden" name="back" value="' + e(back) + '">\n'
+            '      <div class="democlock__row">' + buttons + "</div>\n"
+            "    </form>\n")
 
 
 def _customer_card(conn, case_id) -> str:
@@ -262,9 +287,20 @@ def dashboard(conn, **kw) -> str:
             if r["open_holds"] else '<span class="muted">0</span>'
         detail = ('<span class="detail" title="' + e(r["hold_detail"]) + '">'
                   + cell(r["hold_detail"]) + "</span>")
+        w = r["waiting"]
+        if w:
+            since = (e(w["since"][:10]) + ' <span class="muted">(' + str(w["days"]) + " day"
+                     + ("" if w["days"] == 1 else "s") + ")</span>")
+            viewed = (e(w["last_viewed"].replace("T", " ").rstrip("Z") + " UTC")
+                      if w["last_viewed"] else '<span class="muted">View not recorded</span>')
+            due = (e(w["next_due"] + " UTC") + ' <span class="muted">(' + e(w["next_kind"])
+                   + ")</span>" if w["next_due"] else em_dash("no further reminder scheduled"))
+        else:
+            since = viewed = due = em_dash("the customer owes nothing")
         body.append(
             '<tr class="rowlink" data-href="/case/' + e(r["case_id"]) + '"'
             ' data-status="' + e(r["status"]) + '"'
+            ' data-waiting="' + ("1" if w else "0") + '"'
             ' data-owner="' + e(r["owner"]) + '">'
             '<td class="cell-id"><a href="/case/' + e(r["case_id"]) + '">'
             + idtag(r["case_id"]) + "</a>" + flag + "</td>"
@@ -276,6 +312,9 @@ def dashboard(conn, **kw) -> str:
             '<td class="ta-r">' + score + "</td>"
             '<td class="ta-r">' + holds + "</td>"
             '<td class="cell-detail">' + detail + "</td>"
+            '<td class="cell-wait">' + since + "</td>"
+            '<td class="cell-wait">' + viewed + "</td>"
+            '<td class="cell-wait">' + due + "</td>"
             "</tr>")
 
     def boxes(name, values):
@@ -291,7 +330,17 @@ def dashboard(conn, **kw) -> str:
             '<th scope="col" data-sort="text">Band</th>'
             '<th scope="col" data-sort="num" class="ta-r">Score</th>'
             '<th scope="col" data-sort="num" class="ta-r">Holds</th>'
-            '<th scope="col">Hold detail</th>')
+            '<th scope="col">Hold detail</th>'
+            '<th scope="col" data-sort="text">Waiting on customer since (UTC)'
+            + help_mark("Counted from the first request, and never reset by a new upload. "
+                        "Shown only while the customer owes an item.") + "</th>"
+            '<th scope="col" data-sort="text">Last message viewed (UTC)</th>'
+            '<th scope="col" data-sort="text">Next reminder due (UTC)'
+            + help_mark("From kb/communication_schedule.csv, counted from the first request: "
+                        "the single reminder, or the optional early nudge if it is switched "
+                        "on and due first. Viewing a message never moves the reminder.",
+                        edge=True) + "</th>")
+    waiting = sum(1 for r in rows if r["waiting"])
 
     n = len(rows)
     return (
@@ -312,6 +361,10 @@ def dashboard(conn, **kw) -> str:
         '<div class="opts">' + boxes("status", statuses) + "</div></fieldset>"
         "<fieldset><legend>Next action owner</legend>"
         '<div class="opts">' + boxes("owner", owners) + "</div></fieldset>"
+        "<fieldset><legend>Follow-up</legend>"
+        '<div class="opts"><label class="opt"><input type="checkbox" name="waiting" '
+        'value="1"><span>Waiting on customer (' + str(waiting) + ")</span></label></div>"
+        "</fieldset>"
         "</section>"
         '<p class="count-line"><span id="shown">' + str(n) + "</span> of "
         + str(n) + " cases</p>"

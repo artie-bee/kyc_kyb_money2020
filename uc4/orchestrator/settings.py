@@ -43,3 +43,5 @@ if EXTRACTION_FOR_NEW_UPLOADS not in EXTRACTION_MODES:
     raise ValueError(f"WALLESTER_UC4_EXTRACTION_FOR_NEW_UPLOADS must be one of "
                      f"{EXTRACTION_MODES}, not {EXTRACTION_FOR_NEW_UPLOADS!r}")
 LIVE_READ_INTERVAL = _int("WALLESTER_UC4_LIVE_READ_INTERVAL", 3)
+# A demo build: the console offers the demo clock. 0 turns it off.
+DEMO_BUILD = (os.environ.get("WALLESTER_UC4_DEMO_BUILD") or "1").strip() != "0"
