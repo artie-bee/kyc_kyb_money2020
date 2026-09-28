@@ -139,6 +139,15 @@ def _run(conn, dataset, app_dir, clock, kb, verbose, stop_before_human_actions) 
                     refs, override_reason=override_reason,
                     escalation_target=scripted["escalation_target"] or None, kb=kb)
                 results[case_id]["decision"] = out
+                # A confirmed sanctions match sends nothing with the decision;
+                # compliance then approves the message separately, as scripted.
+                if out.customer_message and out.customer_message.compliance_task_id:
+                    case = conn.execute("SELECT * FROM onboarding_case WHERE case_id = ?",
+                                        (case_id,)).fetchone()
+                    situation, template_id = decision.message_plan(kb, out.decision, case)
+                    communication.send_required_message(
+                        conn, case_id, situation, kb, approver=scripted["reviewer"],
+                        template_id=template_id)
             except decision.DecisionRefused as e:
                 results[case_id]["decision"] = str(e)
 

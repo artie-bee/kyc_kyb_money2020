@@ -18,7 +18,7 @@ UC4 = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(UC4))
 
 from orchestrator import (clock, db, demo_scenarios, holds, live_mode,    # noqa: E402
-                          portal_access)
+                          live_reading, portal_access)
 from orchestrator.kb import KnowledgeBase                                  # noqa: E402
 from orchestrator.quality_checker import get_upload_checker                # noqa: E402
 from orchestrator import settings                                          # noqa: E402
@@ -388,6 +388,46 @@ def communications(conn, case_id: str) -> list[dict]:
                  (case_id,))
 
 
+def follow_up(conn, case_id: str) -> dict:
+    return communication.follow_up(conn, case_id, kb())
+
+
+DELIVERY_LABEL = communication.DELIVERY_LABEL
+
+
+def decision_message_previews(conn, case_id: str, options) -> dict:
+    """{decision: the customer message recording it would trigger}, rendered
+    through the approved templates and the communication rules; nothing stored."""
+    return {o: decision.preview_customer_message(conn, case_id, o, kb()) for o in options}
+
+
+def messages_after_decision(conn, case_id: str) -> dict | None:
+    """The latest decision, and what the customer was sent after it: every
+    applicant message drafted after that decision's audit row (so a message
+    compliance approved separately is included), and whether the automatic
+    message was withheld. None if no decision has been recorded."""
+    event = conn.execute("SELECT event_id FROM audit_event WHERE case_id = ? AND"
+                         " action = 'human_decision_recorded' ORDER BY event_id DESC LIMIT 1",
+                         (case_id,)).fetchone()
+    if event is None:
+        return None
+    after = conn.execute("SELECT action, payload_summary FROM audit_event WHERE case_id = ?"
+                         " AND event_id > ? ORDER BY event_id",
+                         (case_id, event["event_id"])).fetchall()
+    drafted = [r["payload_summary"].split(" ", 1)[0] for r in after
+               if r["action"] == "communication_drafted"]
+    sent = [dict(r, delivery=DELIVERY_LABEL) for r in conn.execute(
+        "SELECT c.communication_id, c.template_id, c.situation, o.sent_at FROM outbox o"
+        " JOIN communication c USING (communication_id) WHERE o.case_id = ? AND"
+        " o.audience = 'applicant' ORDER BY o.outbox_id", (case_id,))
+        if r["communication_id"] in drafted]
+    latest = decisions(conn, case_id)[-1]
+    return {"decision": latest, "sent": sent,
+            "withheld": any(r["action"] == "customer_communication_withheld" for r in after),
+            "situation": decision.message_plan(kb(), latest["decision"],
+                                               case(conn, case_id)["case"])[0]}
+
+
 def compliance_tasks(conn, case_id: str) -> list[dict]:
     return _rows(conn, "SELECT * FROM compliance_task WHERE case_id = ? ORDER BY task_id",
                  (case_id,))
@@ -477,10 +517,18 @@ def carry_on(conn, case_id: str) -> dict:
     conn.commit()
     return trace
 
-def release_document(conn, document_id, analyst_id, choice, reason):
+def resubmission_reasons() -> list[tuple[str, str]]:
+    """(code, customer wording) an analyst may choose when sending a document back."""
+    texts = kb().resubmission_reason_text
+    return [(code, texts[code]["customer_text"].replace("{days}", "N"))
+            for code in analyst_review.resubmission_reason_codes(kb())]
+
+
+def release_document(conn, document_id, analyst_id, choice, reason, reason_code=None):
     case_id = conn.execute("SELECT case_id FROM document WHERE document_id = ?",
                            (document_id,)).fetchone()[0]
-    result = analyst_review.release_document(conn, document_id, analyst_id, choice, reason, kb())
+    result = analyst_review.release_document(conn, document_id, analyst_id, choice, reason,
+                                             kb(), reason_code=reason_code)
     conn.commit()
     # If extraction has already run and left a hold of its own, its wording was
     # written when the document was still held. Releasing the document does not
@@ -556,16 +604,79 @@ def upload_document(conn, case_id, item_id, file_name, content, uploads_dir=None
 
     UploadRefused comes back to the caller with wording meant for the customer.
     """
+    # Hybrid mode: a new file nobody has on record is queued for the live model,
+    # and the portal answers at once. Anything else takes the mock-mode path.
+    checker = (live_reading.QueuedChecker() if live_reading.wants_live(case_id, content)
+               else get_upload_checker(QUALITY_CHECKER_MODE))
     try:
         result = document_quality.receive_upload(
             conn, case_id, item_id, file_name, content, kb(),
-            checker=get_upload_checker(QUALITY_CHECKER_MODE), uploads_dir=uploads_dir)
+            checker=checker, uploads_dir=uploads_dir)
     except document_quality.UploadRefused:
         conn.commit()           # the refusal is audited; that record must survive it
         raise
     conn.commit()
     carry_on(conn, case_id)
     return result
+
+
+# ---------------------------------------------------------------------------
+# Hybrid mode: the live-reading queue
+# ---------------------------------------------------------------------------
+
+LIVE_READ_LABEL = live_reading.LABEL
+
+
+def live_queue_length(conn) -> int:
+    return live_reading.queue_length(conn)
+
+
+def live_queued_documents(conn, case_id) -> set:
+    return ({r["document_id"] for r in live_reading.queued_screens(conn, case_id)}
+            | {r["document_id"] for r in live_reading.queued_fields(conn, case_id)})
+
+
+def live_read_documents(conn, case_id) -> dict:
+    return live_reading.read_by_live_model(conn, case_id)
+
+
+def live_unavailable_reason(conn, document_id):
+    return live_reading.unavailable_reason(conn, document_id)
+
+
+def read_next_live(conn, make_client=None) -> dict | None:
+    """One queued document read by the live model, then the case carried on."""
+    done = live_reading.process_next(conn, kb(), make_client=make_client)
+    conn.commit()
+    if done:
+        carry_on(conn, done["case_id"])
+    return done
+
+
+def start_live_reader(path: Path | None = None, interval: float | None = None):
+    """The background worker for hybrid mode: one document at a time, with a
+    pause between calls so the provider's rate limit is respected (a 429 that
+    still arrives is waited out by the client itself). A daemon thread with its
+    own connection; it stops with the server."""
+    import threading
+    import time
+
+    interval = settings.LIVE_READ_INTERVAL if interval is None else interval
+
+    def loop():
+        conn = connect(path or DB_PATH)
+        while True:
+            try:
+                done = read_next_live(conn)
+            except Exception as e:                  # never take the server down
+                conn.rollback()
+                print(f"live reader: {type(e).__name__}: {e}")
+                done = None
+            time.sleep(interval if done else max(interval, 2))
+
+    worker = threading.Thread(target=loop, name="live-reader", daemon=True)
+    worker.start()
+    return worker
 
 
 def issue_portal_access(conn, case_id, issued_by):
@@ -576,6 +687,12 @@ def issue_portal_access(conn, case_id, issued_by):
 
 def portal_case(conn, token):
     return portal_access.resolve(conn, token)
+
+
+def record_messages_viewed(conn, case_id, communication_ids):
+    """The customer opened the Messages page. Audited, and changes nothing else."""
+    communication.record_view(conn, case_id, communication_ids, kb())
+    conn.commit()
 
 
 def end_portal_session(conn, token):
@@ -721,6 +838,26 @@ DEMO_SAMPLE_LABEL = demo_samples.LABEL
 
 def recognised_documents(conn, case_id: str) -> set:
     return demo_samples.recognised_documents(conn, case_id)
+
+
+def recognised_fields(conn, case_id: str) -> set:
+    return demo_samples.recognised_fields(conn, case_id)
+
+
+def recognised_awaiting(conn, case_id: str) -> list:
+    """Documents set up for typing whose file is now a recognised demo sample."""
+    return [d for d in document_quality.accepted_documents(conn, case_id)
+            if extraction.recognised_awaiting(conn, case_id, d)]
+
+
+def read_recognised_samples(conn, case_id: str) -> int:
+    """Step 4 again for the case: recognised samples still waiting to be typed in
+    get their recorded fields; nothing else changes. Then the case carries on."""
+    n = len(recognised_awaiting(conn, case_id))
+    extraction.run(conn, case_id, _application(case_id, conn), kb())
+    conn.commit()
+    carry_on(conn, case_id)
+    return n
 
 
 def rescreen_document(conn, document_id, actor, reason):

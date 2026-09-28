@@ -61,6 +61,9 @@ class QualityVerdict:
     # Set when the verdict was replayed rather than judged - a recognised demo
     # sample file in mock mode. Step 3 writes it into the audit row.
     source_label: str | None = None
+    # The flag Step 3 puts on a document it holds for hold_reason. Default is the
+    # visual-check marker; a file queued for the live model has its own.
+    hold_marker: str | None = None
 
     def validate(self) -> "QualityVerdict":
         unknown = [f for f in self.flags if f not in ALLOWED_FLAGS]

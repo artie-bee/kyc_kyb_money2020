@@ -15,7 +15,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from orchestrator import clock                                        # noqa: E402
+from orchestrator import clock, settings                              # noqa: E402
 
 
 @pytest.fixture(autouse=True, scope="session")
@@ -34,3 +34,6 @@ _SHELL_SETTINGS = ("LLM_PROVIDER", "WALLESTER_UC4_MODEL", "WALLESTER_UC4_TEMPERA
 def no_shell_settings(monkeypatch):
     for name in _SHELL_SETTINGS:
         monkeypatch.delenv(name, raising=False)
+    # Read once at import, so it is pinned on the module: every test starts in
+    # mock_only, and the hybrid tests switch it on themselves.
+    monkeypatch.setattr(settings, "EXTRACTION_FOR_NEW_UPLOADS", "mock_only")

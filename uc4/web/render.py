@@ -409,10 +409,18 @@ def queue_page(conn, role="analyst", **kw) -> str:
                   "Nothing needs you as " + role + " right now.")]
     start = ('<p><a class="btn btn--primary" href="/case/' + e(first) + '">Start with '
              + e(first) + "</a></p>" if first else "")
+    # Viewing as another role uses the existing /action/settings route: it only
+    # changes whose queue is shown, and every action still checks the role.
+    picker = ('<form method="post" action="/action/settings" class="btn-row rolepick">'
+              '<input type="hidden" name="back" value="/queue">'
+              '<label for="queue-role">View as</label><select name="role" id="queue-role">'
+              + "".join('<option value="' + r + '"' + (" selected" if r == role else "") + ">"
+                        + r + "</option>" for r in ("analyst", "compliance"))
+              + '</select><button class="btn" type="submit">Show my queue</button></form>')
     return ('<header class="page"><h1>My queue</h1><p class="sub">Cases you can act on as '
-            "<strong>" + e(role) + "</strong>: the worst open hold first, then the risk band, "
-            "then the oldest. Switch role on the decision form.</p></header>"
-            + start + "".join(body))
+            "<strong>" + e(role) + "</strong>: critical and sanctions cases first, then the "
+            "worst open hold, then the risk band, then the oldest.</p></header>"
+            + picker + start + "".join(body))
 
 
 def _reassessment_panel(conn, case_id) -> str:
@@ -622,11 +630,39 @@ def _tab_documents(conn, case_id, role="analyst", reviewer="analyst.demo", **kw)
     documents = data.documents(conn, case_id)
     by_id = {d["document_id"]: d for d in documents}
     replaced = data.replaced_by(conn, case_id)      # new document id -> the one it replaced
+    # Hybrid mode: which documents the live model judged or read, and which are
+    # still waiting for it. Three sources of a value, never shown as one another:
+    # read by the live model, a recognised demo sample, typed in by an analyst.
+    live = data.live_read_documents(conn, case_id)
+    queued = data.live_queued_documents(conn, case_id)
+    in_queue = data.live_queue_length(conn) if queued else 0
+    reading = ("Reading automatically... (" + str(in_queue) + " in queue)")
+    sample_fields = data.recognised_fields(conn, case_id)
+    stale = data.recognised_awaiting(conn, case_id)
+    if stale:
+        out.append(
+            note(str(len(stale)) + " document(s) waiting to be typed in are recognised demo "
+                 "sample files (" + ", ".join(e(d["document_id"]) for d in stale) + "). Their "
+                 "fields are on record, so they can be read instead of typed.", "info",
+                 "Recognised demo samples")
+            + '<form method="post" action="/action/read-recognised">'
+            '<input type="hidden" name="case_id" value="' + e(case_id) + '">'
+            '<input type="hidden" name="back" value="/case/' + e(case_id) + '?tab=Documents">'
+            '<button class="btn btn--primary" type="submit">Read their recorded fields'
+            "</button></form>")
     for doc in documents:
         replayed = doc["document_id"] in recognised
         held = doc["quality_status"] == "manual_review_required"
-        flags = ('<span class="type">[' + e(doc["quality_flags"]) + "]</span>"
-                 if doc["quality_flags"] else "")
+        waiting = doc["document_id"] in queued and doc["quality_status"] != "superseded"
+        # The visual-check marker says what Step 3 could not do. Once a person
+        # has looked, it no longer describes the document, so it is not shown.
+        shown_flags = [f for f in (doc["quality_flags"] or "").split("|")
+                       if f and not (f in ("visual_check_not_run", "live_read_queued")
+                                     and not held)]
+        flags = ('<span class="type">[' + e("|".join(shown_flags)) + "]</span>"
+                 if shown_flags else "")
+        if doc["released_by"] and not held and doc["quality_status"] != "superseded":
+            flags += chip("released by " + doc["released_by"], tone="ok")
         own_name = names.get(doc["file_name"])
         by_applicant = (chip("uploaded by applicant", tone="info")
                         if own_name is not None else "")
@@ -638,6 +674,9 @@ def _tab_documents(conn, case_id, role="analyst", reviewer="analyst.demo", **kw)
                            "superseded": "neutral"})
                    + by_applicant
                    + (chip(data.DEMO_SAMPLE_LABEL, tone="warn") if replayed else "")
+                   + (chip(data.LIVE_READ_LABEL, tone="info")
+                      if doc["document_id"] in live["quality"] else "")
+                   + (chip(reading, tone="info") if waiting else "")
                    + flags + "</summary>")
 
         left = _preview(doc)
@@ -662,6 +701,13 @@ def _tab_documents(conn, case_id, role="analyst", reviewer="analyst.demo", **kw)
         if doc["released_by"]:
             right.append(note("Released by " + e(doc["released_by"]) + ": "
                               + e(doc["release_reason"]), "info"))
+        if doc["document_id"] in live["quality"]:
+            right.append("<p><strong>Quality check:</strong> " + chip(
+                live["quality"][doc["document_id"]], tone="info") + "</p>")
+        if waiting:
+            right.append(note("This upload is queued for the live model, which will check "
+                              "it and read its fields. Nothing to do yet; you can still "
+                              "decide on it or type the fields in now.", "info", reading))
         if held:
             right.append(note("Accept keeps the document and lets the case carry "
                               "on. Request resubmission sends it back to the "
@@ -676,8 +722,13 @@ def _tab_documents(conn, case_id, role="analyst", reviewer="analyst.demo", **kw)
                 '<form method="post" action="/action/release-document">'
                 '<input type="hidden" name="document_id" value="' + e(doc["document_id"]) + '">'
                 '<input type="hidden" name="back" value="/case/' + e(case_id) + '?tab=Documents">'
-                '<div class="field"><label>Reason</label>'
+                '<div class="field"><label>Reason (internal, on the record)</label>'
                 '<input type="text" name="reason" required></div>'
+                '<div class="field"><label>If sending it back: what the customer is told'
+                "</label><select name=\"reason_code\"><option value=\"\">Choose a reason..."
+                "</option>" + "".join(
+                    '<option value="' + e(code) + '">' + e(text) + "</option>"
+                    for code, text in data.resubmission_reasons()) + "</select></div>"
                 '<div class="btn-row">'
                 '<button class="btn btn--primary" name="choice" value="accept"'
                 ' data-shortcut="a">Accept</button>'
@@ -696,8 +747,11 @@ def _tab_documents(conn, case_id, role="analyst", reviewer="analyst.demo", **kw)
                        and not keyed)
                 if keyed:
                     state = chip("entered by an analyst", tone="info")
-                elif replayed:
+                elif replayed or doc["document_id"] in sample_fields:
                     state = chip(data.DEMO_SAMPLE_LABEL, tone="warn")
+                elif doc["document_id"] in live["fields"]:
+                    state = chip(live["fields"][doc["document_id"]], tone="info") + (
+                        chip("below the confidence floor", tone="bad") if low else "")
                 elif f["corrected_by_analyst"]:
                     state = chip("corrected by an analyst", tone="ok")
                 elif low:
@@ -740,7 +794,8 @@ def _tab_documents(conn, case_id, role="analyst", reviewer="analyst.demo", **kw)
                 right.append("<h3>Fields</h3>" + "".join(rows))
         if awaiting:
             # Beside the preview, so the analyst types what the file says.
-            right.append(_entry_form(case_id, doc, awaiting))
+            right.append(_entry_form(case_id, doc, awaiting,
+                                     data.live_unavailable_reason(conn, doc["document_id"])))
             held = True
 
         cls = "doc doc--held" if held else "doc"
@@ -770,9 +825,11 @@ def _preview(doc) -> str:
             "generated for this document.</p></div>")
 
 
-def _entry_form(case_id, doc, awaiting) -> str:
+def _entry_form(case_id, doc, awaiting, unavailable=None) -> str:
     """Mock mode: nothing reads an uploaded file, so the analyst types in what
-    it says. Recorded as entered_by_analyst - never as extracted."""
+    it says. Recorded as entered_by_analyst - never as extracted. In hybrid mode
+    this is also the fallback when the live model could not read it, and the
+    reason is shown."""
     required = set(data.kb().required_fields_for(doc["document_type"]))
     # Every input starts EMPTY. Nothing the customer declared is offered here:
     # the value typed is what the document says, or the comparison it feeds
@@ -788,6 +845,8 @@ def _entry_form(case_id, doc, awaiting) -> str:
     return ('<form method="post" action="/action/enter-fields" class="panel">'
             '<input type="hidden" name="document_id" value="' + e(doc["document_id"]) + '">'
             '<input type="hidden" name="back" value="/case/' + e(case_id) + '?tab=Documents">'
+            + (note("Automatic reading unavailable: " + e(unavailable.rstrip("."))
+                    + ". Type in the fields instead.", "bad") if unavailable else "")
             + note("Fields not read automatically in mock mode. Open the file, then type in "
                    "what it says. Each value is recorded as <strong>entered by an "
                    "analyst</strong>, under your name, and never as extracted. Dates typed "
@@ -958,6 +1017,7 @@ def _tab_decision(conn, case_id, role="analyst", reviewer="analyst.demo", **kw):
         if d["override_flag"]:
             out.append(note("Override (" + e(d["override_direction"]) + "): "
                             + e(d["override_reason"]), "warn"))
+    out.append(_message_sent(conn, case_id, role))
 
     open_now = data.open_holds(conn, case_id)
     if open_now:
@@ -1016,7 +1076,7 @@ def _tab_decision(conn, case_id, role="analyst", reviewer="analyst.demo", **kw):
         + help_mark("Only the decisions kb/analyst_decision_taxonomy.csv allows at "
                     "band " + band + " appear here. Some also need a particular "
                     "role, which the backend checks when you record it.")
-        + '</label><select name="choice">' + "".join(opts) + "</select></div>"
+        + '</label><select name="choice" data-previews>' + "".join(opts) + "</select></div>"
         '<div class="field"><label>Rationale'
         + help_mark("Why you decided this, in plain words. Required for every "
                     "decision. This is what a reviewer reads months later, so "
@@ -1070,7 +1130,74 @@ def _tab_decision(conn, case_id, role="analyst", reviewer="analyst.demo", **kw):
         "</div></div>"
         '<button class="btn btn--primary" type="submit">Record this decision</button>'
         "</form>")
+    out.append(_message_previews(conn, case_id, options))
     return "".join(out)
+
+
+GENERIC_NOTE = "Generic wording is used because this case has an internal finding."
+WITHHELD_TEXT = "No automatic message. Compliance decides separately what the customer is told."
+SEE_ALL = "See all communications"
+
+
+def _message_previews(conn, case_id, options) -> str:
+    """The customer message each decision would trigger, shown before it is
+    recorded. One block per decision the form offers; the script shows the one
+    selected (with scripts off, every block is shown under its decision)."""
+    blocks = []
+    for choice, p in data.decision_message_previews(conn, case_id, options).items():
+        head = ('<p class="muted">If you record <strong>' + e(choice) + "</strong>:</p>")
+        if p["kind"] == "withheld":
+            body = note(e(WITHHELD_TEXT) + " After the decision, compliance approves the "
+                        "message as its own action, here or on the Communications tab.",
+                        "warn")
+        elif p["kind"] == "message":
+            body = ((note(e(GENERIC_NOTE), "info") if p["restricted"] else "")
+                    + '<div class="msg"><span class="msg__when">' + idtag(p["template_id"])
+                    + " approved template &middot; situation " + e(p["situation"])
+                    + "</span>" + e(p["text"]) + "</div>")
+        elif p["kind"] == "blocked":
+            body = note("This message would be blocked by the restricted-wording check and "
+                        "not sent.", "bad")
+        else:
+            body = '<p class="empty">No customer message follows this decision.</p>'
+        blocks.append('<div class="preview" data-preview-for="' + e(choice) + '">' + head
+                      + body + "</div>")
+    return ('<section class="panel" id="customer-message"><h3>Customer message'
+            + help_mark("A preview of what the customer would be sent, rendered from the "
+                        "approved template the communication rules choose for the selected "
+                        "decision. Nothing is stored or sent until the decision is recorded.")
+            + "</h3>" + "".join(blocks) + "</section>")
+
+
+def _message_sent(conn, case_id, role) -> str:
+    """After a decision: what the customer was sent, or - on a confirmed
+    sanctions match - the existing compliance approval, a separate action."""
+    after = data.messages_after_decision(conn, case_id)
+    if after is None:
+        return ""
+    link = ('<a href="/case/' + e(case_id) + '?tab=Communications">' + e(SEE_ALL) + "</a>")
+    rows = [[idtag(m["communication_id"]) + " " + idtag(m["template_id"]),
+             e(m["situation"]), e(m["sent_at"].replace("T", " ").rstrip("Z") + " UTC"),
+             e(m["delivery"])] for m in after["sent"]]
+    parts = ["<h3>Customer message</h3>"]
+    if rows:
+        parts.append(table(["Message", "Situation", "Sent", "Delivery"], rows))
+    if after["withheld"] and not rows:
+        form = ""
+        if after["situation"]:
+            action = ('<button class="btn btn--primary" type="submit">Approve the customer '
+                      "message as compliance</button>" if role == "compliance" else
+                      '<span class="help">Switch to the compliance role to approve it.</span>')
+            form = ('<form method="post" action="/action/send-message" class="btn-row">'
+                    '<input type="hidden" name="case_id" value="' + e(case_id) + '">'
+                    '<input type="hidden" name="situation" value="' + e(after["situation"]) + '">'
+                    '<input type="hidden" name="back" value="/case/' + e(case_id)
+                    + '?tab=Decision">' + action + "</form>")
+        parts.append(note(e(WITHHELD_TEXT), "warn") + form)
+    elif not rows:
+        parts.append('<p class="empty">No customer message followed this decision.</p>')
+    parts.append('<p class="foot">' + link + "</p>")
+    return '<section class="panel">' + "".join(parts) + "</section>"
 
 
 def _reason_code_select(conn, case_id, options) -> str:
@@ -1233,8 +1360,69 @@ def _ai_preparation(conn, case_id, role="analyst") -> str:
         + "</div></section>")
 
 
+FOLLOW_UP_TONE = {"Awaiting customer": "warn", "Reminder sent": "warn", "Completed": "ok",
+                  "Closed": "neutral"}
+DOCUMENT_STATE_TONE = {"outstanding": "warn", "received": "ok", "no longer requested": "neutral"}
+
+
+def _when(stamp, zone) -> str:
+    return e(stamp.replace("T", " ").rstrip("Z") + " " + zone) if stamp else ""
+
+
+def _follow_up_panel(conn, case_id) -> str:
+    """Per request sent to the customer: what it asked for, when, whether they
+    viewed it, the reminders since, and where it stands. Every value is read
+    from the communication, outbox and audit records; nothing is kept for it."""
+    f = data.follow_up(conn, case_id)
+    zone = f["timezone"]
+    head = ("<h2>Customer follow-up"
+            + help_mark("One row per request sent to the customer. Reminders follow the "
+                        "schedule in kb/communication_schedule.csv only: viewing a message "
+                        "never delays or stops one. One reminder lists every item still "
+                        "outstanding, and goes even while another hold is open. The "
+                        "no-response limit counts from the first request, a new upload never "
+                        "resets it, and it closes the case only when the customer is the "
+                        "sole remaining blocker.")
+            + "</h2>")
+    if not f["requests"]:
+        owed = (" The customer currently owes: " + e(", ".join(f["owed"])) + "."
+                if f["owed"] else "")
+        return head + '<p class="empty">No request has been sent to the customer yet.' + owed \
+            + "</p>"
+
+    rows = []
+    for r in f["requests"]:
+        docs = "<br>".join(e(d["label"]) + " " + chip(d["state"], DOCUMENT_STATE_TONE)
+                           for d in r["documents"]) or em_dash()
+        history = "<br>".join(idtag(m["communication_id"]) + " " + _when(m["sent_at"], zone)
+                              + ' <span class="muted">(' + e(m["delivery"]) + ")</span>"
+                              for m in r["reminders"]) or '<span class="muted">None sent</span>'
+        rows.append([
+            idtag(r["communication_id"]) + " " + e(r["situation"]),
+            docs,
+            _when(r["sent_at"], zone),
+            e(r["delivery"]),
+            _when(r["viewed_at"], zone) or '<span class="muted">View not recorded</span>',
+            e(r["next_reminder_due"] + " " + zone) if r["next_reminder_due"] else em_dash(),
+            history,
+            chip(r["status"], FOLLOW_UP_TONE),
+        ])
+    limit = ("No-response limit: the case closes as withdrawn on " + e(f["closes_on"]) + " "
+             + e(zone) + " if nothing acceptable arrives, counted from the first request on "
+             + _when(f["first_request_at"], zone) + ". A new upload does not reset it; after "
+             + str(f["attempt_limit"]) + " unreadable uploads an item goes to an analyst."
+             if f["closes_on"] else
+             "Reminders continue on schedule, but the case will not close for want of a reply "
+             "while another hold is open: the customer is not the only blocker."
+             if f["closure_paused"] else "")
+    return (head
+            + table(["Request", "Document(s) requested", "Request sent", "Delivery", "Viewed",
+                     "Next reminder due", "Reminder history", "Follow-up status"], rows)
+            + '<p class="foot">All times ' + e(zone) + ". " + limit + "</p>")
+
+
 def _tab_comms(conn, case_id, reviewer="analyst.demo", **kw):
-    out = ["<h2>Communications</h2>"]
+    out = [_follow_up_panel(conn, case_id), "<h2>Communications</h2>"]
     for t in data.compliance_tasks(conn, case_id):
         out.append(note(e(t["reason"]), "bad", "Compliance task " + e(t["task_id"])
                         + ": " + e(t["task"])))

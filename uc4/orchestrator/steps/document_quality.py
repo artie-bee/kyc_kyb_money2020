@@ -50,6 +50,12 @@ SUPERSEDED = "superseded"
 # the visual check yet (mock mode). It is a marker, not a fault: the risk step
 # does not score it as a quality problem.
 VISUAL_MARKER = "visual_check_not_run"
+# A portal upload waiting in the queue for the live model (orchestrator/live_reading.py).
+QUEUED_MARKER = "live_read_queued"
+LIVE_QUEUED = "reading automatically"
+# Each marker is a per-document hold: its reason, and what it is waiting for.
+_PER_DOCUMENT = {VISUAL_MARKER: (VISUAL_CHECK_NOT_RUN, "waiting for an analyst to look at it"),
+                 QUEUED_MARKER: (LIVE_QUEUED, "waiting for the live model")}
 
 # document.quality_status -> checklist_item.status
 ITEM_STATUS = {
@@ -274,7 +280,7 @@ def run(conn, case_id: str, application: dict, kb: KnowledgeBase,
             # The deterministic rules passed it; the visual half was not done by
             # anyone. A person does it before the document counts as accepted.
             status = "manual_review_required"
-            flags.add(VISUAL_MARKER)
+            flags.add(verdict.hold_marker or VISUAL_MARKER)
             problems.append(f"{doc['file_name']}: {verdict.hold_reason}")
         counts[status] += 1
 
@@ -341,7 +347,8 @@ def route_case(conn, case_id: str, kb: KnowledgeBase,
     # counting it again would hold the case open forever. Documents matching no
     # checklist item are counted too, so an unsolicited failure is not lost.
     docs = conn.execute(
-        "SELECT d.quality_status, d.quality_flags FROM document d WHERE d.case_id = ?"
+        "SELECT d.document_id, d.document_type, d.quality_status, d.quality_flags"
+        " FROM document d WHERE d.case_id = ?"
         " AND d.document_id IN ("
         "  SELECT MAX(cid.document_id) FROM checklist_item_document cid"
         "  JOIN document d2 ON d2.document_id = cid.document_id"
@@ -365,18 +372,32 @@ def route_case(conn, case_id: str, kb: KnowledgeBase,
 
     # This step re-runs after an analyst release, so it lifts its own holds first
     # and places whatever the current picture warrants. It never touches another
-    # step's hold.
-    holds.release_own(conn, case_id, ACTOR, "document quality re-evaluated", kb)
+    # step's hold. The one exception is the visual-check hold, which belongs to a
+    # single document: each stays until that document is dealt with, so one
+    # document is never held back by another's hold.
+    visual_docs = {d["document_id"]: d for d in docs
+                   if d["quality_status"] == "manual_review_required"
+                   and _marker(d["quality_flags"])}
+    visual_holds = {}
+    for h in holds.open_holds(conn, case_id):
+        if h.placed_by_step != ACTOR:
+            continue
+        doc_id = visual_hold_document(h.reason)
+        if doc_id and doc_id in visual_docs:
+            visual_holds[doc_id] = h            # still applies: keep it as it is
+        else:
+            holds.release(conn, h.hold_id, ACTOR, "document quality re-evaluated",
+                          by_step=ACTOR, kb=kb)
+    for doc_id, d in visual_docs.items():
+        if doc_id not in visual_holds:
+            reason, waiting = _PER_DOCUMENT[_marker(d["quality_flags"])]
+            holds.place(conn, case_id, ACTOR, "manual_review",
+                        f"{reason}: {doc_id} ({d['document_type']}) {waiting}", "analyst", kb)
 
     if held or counts["manual_review_required"]:
         n = len(held) or counts["manual_review_required"]
         summary = f"{n} item(s) need an analyst"
-        visual = sum(1 for d in docs if d["quality_status"] == "manual_review_required"
-                     and VISUAL_MARKER in (d["quality_flags"] or "").split("|"))
-        if visual:
-            holds.place(conn, case_id, ACTOR, "manual_review",
-                        f"{VISUAL_CHECK_NOT_RUN}: {visual} uploaded document(s) waiting for "
-                        f"an analyst to look at them", "analyst", kb)
+        visual = len(visual_docs)
         if n > visual:
             holds.place(conn, case_id, ACTOR, "manual_review",
                         f"{n - visual} document(s) flagged for an analyst at the quality screen",
@@ -614,10 +635,22 @@ def receive_upload(conn, case_id: str, item_id: str, original_name: str, content
     if not paid_checks_open:
         reassessment.place(conn, case_id, document, kb)
         holds.apply_status(conn, case_id, kb, case["status"], case["next_action_owner"])
-    # The customer has answered for this item: it drops out of any reminder.
-    db.audit(conn, case_id, "system", ACTOR, "reminders_stopped",
-             f"{item_id} ({item['document_type']}): the customer has sent it; no further "
-             f"reminders about this item", kb.version)
+    now = conn.execute("SELECT status, resubmission_attempts FROM checklist_item"
+                       " WHERE item_id = ?", (item_id,)).fetchone()
+    if now["status"] in OPEN_FOR_UPLOAD:
+        # Unreadable again: a new resubmission for this item, and it stays in
+        # the reminders. The case's reply deadline does not move - it counts
+        # from the first request (communication.first_request_at).
+        db.audit(conn, case_id, "system", ACTOR, "resubmission_requested",
+                 f"{item_id} ({item['document_type']}): the new upload could not be accepted; "
+                 f"attempt {now['resubmission_attempts']} of {MAX_ATTEMPTS}; a new copy is "
+                 f"needed. Reminders and the no-response limit still count from the first "
+                 f"request", kb.version)
+    else:
+        # The customer has answered for this item: it drops out of any reminder.
+        db.audit(conn, case_id, "system", ACTOR, "reminders_stopped",
+                 f"{item_id} ({item['document_type']}): the customer has sent it; no further "
+                 f"reminders about this item", kb.version)
     return UploadResult(case_id, item_id, document, stored, status, result.status,
                         result.next_step)
 
@@ -637,6 +670,23 @@ def uploaded_names(conn, case_id: str) -> dict:
         if m:
             out[m.group(2)] = json.loads(m.group(1))
     return out
+
+
+def _marker(flags: str | None) -> str | None:
+    """The per-document hold marker on a document's flags, if it has one."""
+    present = (flags or "").split("|")
+    return next((m for m in _PER_DOCUMENT if m in present), None)
+
+
+_VISUAL_HOLD = re.compile(r"^manual_review: (?:" + "|".join(
+    re.escape(reason) for reason, _ in _PER_DOCUMENT.values()) + r"): (DOC-\d+) ")
+
+
+def visual_hold_document(reason: str) -> str | None:
+    """The document a per-document hold is for, from its reason: a visual check
+    not run, or a file queued for the live model."""
+    m = _VISUAL_HOLD.match(reason or "")
+    return m.group(1) if m else None
 
 
 def rescreen_document(conn, document_id: str, actor: str, reason: str, kb: KnowledgeBase,

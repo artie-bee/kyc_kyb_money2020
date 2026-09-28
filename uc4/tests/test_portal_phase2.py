@@ -351,11 +351,11 @@ def test_mock_mode_never_labels_keyed_values_as_extracted(demo):
     release_visual_checks(conn, case_id)
     reasons = [h.reason for h in data.open_holds(conn, case_id)]
     assert any("fields not read automatically in mock mode" in r for r in reasons), reasons
-    # a file with fields still to type in stays under review; one with no fields
-    # to read (a selfie, say) is accepted once a person has looked at it
+    # a person has looked and accepted each file, so the customer sees Accepted;
+    # typing the fields in is internal work they are not waiting on
     statuses = [i["status"] for i in customer_checklist(conn, case_id)["items"]
                 if not i["optional"]]
-    assert set(statuses) <= {"Under review", "Accepted"} and "Under review" in statuses
+    assert set(statuses) == {"Accepted"}, statuses
 
     type_everything_in(conn, case_id)
     methods = {r[0] for r in conn.execute(

@@ -250,5 +250,16 @@ python -m pytest tests -q
 Run the two servers side by side, in two terminals, over the same
 `onboarding.db`. Settings come from the environment:
 `WALLESTER_UC4_PORTAL_LINK_DAYS` (customer link expiry, default 14),
-`WALLESTER_UC4_MAX_UPLOAD_MB` (default 10), `WALLESTER_UC4_PORTAL_URL` and
-`WALLESTER_UC4_VIRUS_SCANNER`. README.md lists them with their defaults.
+`WALLESTER_UC4_MAX_UPLOAD_MB` (default 10), `WALLESTER_UC4_PORTAL_URL`,
+`WALLESTER_UC4_VIRUS_SCANNER`, `WALLESTER_UC4_EXTRACTION_FOR_NEW_UPLOADS` and
+`WALLESTER_UC4_LIVE_READ_INTERVAL`. README.md lists them with their defaults.
+
+Hybrid mode (`orchestrator/live_reading.py`) adds no table. The queue is read
+from the records:
+- a document flagged `live_read_queued` waits for the live quality check;
+- a document with empty `awaiting_analyst_entry` rows and a
+  `fields_queued_for_live_read` audit event waits for the live extractor.
+
+The worker makes the model call before it writes anything, so the store is never
+locked while the model is working. It then hands the result to the ordinary
+`rescreen_document()` or `extraction.run()`.

@@ -164,7 +164,8 @@ def test_the_next_step_follows_an_upload_and_an_analyst_action(conn, pack):
     held = c.execute("SELECT document_id FROM document WHERE case_id = 'WAL-ONB-0002' AND"
                      " document_type = 'id_document' AND quality_status ="
                      " 'manual_review_required'").fetchone()[0]
-    data.release_document(c, held, "analyst.test", "request_resubmission", "cropped")
+    data.release_document(c, held, "analyst.test", "request_resubmission", "cropped",
+                          reason_code="document_incomplete")
     again = step_for(c, "WAL-ONB-0002")
     assert again["kind"] == "upload" and "Identity document" in again["text"]
     assert again["item"]["reason"]
@@ -419,3 +420,18 @@ def test_both_front_ends_read_the_same_wording(conn):
             assert view["status_text"] == KB.customer_status_wording[STATUS_WORDING_KEY[status]]
         assert view["status_text"] in console.customer(c, case_id)
     assert PLAIN_STATUS["enhanced_due_diligence"] == PLAIN_STATUS["analyst_review_required"]
+
+
+def test_my_queue_can_be_viewed_as_either_role_through_the_existing_settings_route(
+        console_site):
+    """The queue's "View as" only changes whose queue is shown, through the
+    existing /action/settings route; every action still checks the role."""
+    c, base = console_site
+    b = Browser(base)
+    page = b.go("/queue")[2]
+    form = re.search(r'<form method="post" action="/action/settings".*?</form>', page, re.S)
+    assert form and 'name="role"' in form.group(0)
+    status, where, _ = b.go("/action/settings", {"role": "compliance", "back": "/queue"})
+    assert (status, where) == (303, "/queue")
+    listed = re.findall(r'<td><a href="/case/(WAL-ONB-\d+)">', b.go("/queue")[2])
+    assert listed[:2] == ["WAL-ONB-0012", "WAL-ONB-0006"]

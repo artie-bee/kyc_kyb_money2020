@@ -70,6 +70,20 @@
     location.href = picker.getAttribute("data-base") + picker.value;
   });
 
+  // ---- decision tab: customer message preview ---------------------------
+  // Every decision's preview is on the page; show only the one selected.
+  // With scripts off they all stay visible, each under its decision.
+  var choice = document.querySelector("select[data-previews]");
+  if (choice) {
+    var showPreview = function () {
+      Array.prototype.forEach.call(document.querySelectorAll("[data-preview-for]"), function (p) {
+        p.hidden = p.getAttribute("data-preview-for") !== choice.value;
+      });
+    };
+    choice.addEventListener("change", showPreview);
+    showPreview();
+  }
+
   // ---- clickable rows ---------------------------------------------------
   // The row carries the same destination as the link in its first cell, so a
   // middle-click or a keyboard user still gets a real anchor.

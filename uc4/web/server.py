@@ -306,7 +306,8 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/action/release-document":
             result = data.release_document(
                 conn, form["document_id"], reviewer,
-                form.get("choice", "accept"), form.get("reason", ""))
+                form.get("choice", "accept"), form.get("reason", ""),
+                reason_code=form.get("reason_code") or None)
             return "Document " + result.document_id + ": " + result.decision
 
         if path == "/action/field":
@@ -368,6 +369,11 @@ class Handler(BaseHTTPRequestHandler):
                      if result["date_rules"] else "")
             return ("Document " + result["document_id"] + ": " + str(len(result["entered"]))
                     + " field(s) entered by " + reviewer + "." + extra)
+
+        if path == "/action/read-recognised":
+            n = data.read_recognised_samples(conn, form["case_id"])
+            return (str(n) + " document(s) read from the recognised demo sample record; "
+                    "their fields are labelled " + data.DEMO_SAMPLE_LABEL + ".")
 
         if path == "/action/demo-scenario":
             chosen = data.choose_demo_scenario(conn, form["case_id"], form.get("scenario", ""),

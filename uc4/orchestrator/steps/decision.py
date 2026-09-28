@@ -191,12 +191,15 @@ def record_decision(conn, case_id: str, reviewer: str, reviewer_role: str, decis
                    next_action_owner="compliance" if decision == "escalate" else "system")
 
     comm = None
-    situation = _SITUATION.get(decision)
+    situation, template_id = message_plan(kb, decision, case)
     if situation:
+        # The reviewer approves the message their decision triggers - except on
+        # a confirmed sanctions match, where there is no automatic message at
+        # all (communication gate 2): a compliance task is raised, and what the
+        # customer is told is approved separately, as its own audited act.
+        approver = None if communication.confirmed_sanctions_match(conn, case_id) else reviewer
         comm = communication.send_required_message(
-            conn, case_id, situation, kb, chooser, approver=reviewer,
-            template_id=rule["customer_template_id"]
-            if _allowed(kb, situation, rule["customer_template_id"], case) else None)
+            conn, case_id, situation, kb, chooser, approver=approver, template_id=template_id)
 
     db.audit(conn, case_id, "system", ACTOR, "decision_completed",
              f"{decision_id}: case -> {status}"
@@ -205,6 +208,30 @@ def record_decision(conn, case_id: str, reviewer: str, reviewer_role: str, decis
              kb.version)
     return DecisionResult(case_id, decision_id, decision, status, override,
                           direction, comm, [])
+
+
+def message_plan(kb: KnowledgeBase, decision: str, case) -> tuple[str | None, str | None]:
+    """(situation, pinned template or None) for the customer message this
+    decision triggers - what record_decision sends and preview_customer_message
+    shows, from one place."""
+    situation = _SITUATION.get(decision)
+    if situation is None:
+        return None, None
+    template_id = kb.decision_taxonomy[decision]["customer_template_id"]
+    return situation, (template_id if _allowed(kb, situation, template_id, case) else None)
+
+
+def preview_customer_message(conn, case_id: str, decision: str,
+                             kb: KnowledgeBase | None = None) -> dict:
+    """The customer message recording this decision would trigger, rendered
+    now and stored nowhere. See communication.preview_message for the kinds."""
+    kb = kb or KnowledgeBase()
+    case = conn.execute("SELECT * FROM onboarding_case WHERE case_id = ?", (case_id,)).fetchone()
+    situation, template_id = message_plan(kb, decision, case)
+    if situation is None:
+        return {"kind": "none", "situation": None, "restricted": bool(case["restricted_finding"]),
+                "template_id": None, "text": None}
+    return communication.preview_message(conn, case_id, situation, kb, template_id=template_id)
 
 
 def _allowed(kb: KnowledgeBase, situation: str, template_id: str, case) -> bool:

@@ -237,7 +237,8 @@ names no document type and counts nothing itself.
   deterministic rules for real, then a hold *"visual check not run in mock
   mode"*, released in the console with the existing *Release document*. After
   that, the phase 2 field-typing step applies. A successful upload stops
-  reminders about that item.
+  reminders about that item; an unreadable one is a new resubmission for it
+  (audited `resubmission_requested`, attempt n of 3) and stays in the reminders.
 - **A document that arrives after the paid checks** (one added during enhanced
   due diligence, say) is screened and read, but `resume()` does not re-run the
   providers. The case goes back to the status its risk band implies.
@@ -264,6 +265,47 @@ console. Any other file keeps the visual-check hold and typed-in fields. Live
 mode ignores the manifest. Generate the pack on the demo day: its proof of
 address is dated from the day it is made. `tests/test_demo_pack.py` covers it.
 
+A second pack is committed in `demo_packs/vaher_studio/`, for Vaher Studio OÜ
+(registry code 16880342). It has fixed files and its own `manifest.json`,
+recognised in the same way, so a demo that uses it never needs the live model.
+Its proof of address is dated 2026-09-10, so it ages like a real one.
+
+### Hybrid extraction for new portal uploads
+
+With `WALLESTER_UC4_EXTRACTION_FOR_NEW_UPLOADS=live_if_available`, some uploads
+are read by the live model instead of being typed in. This applies only to a
+file uploaded to a WAL-DEMO- case that is not a recognised sample. The
+fourteen scripted cases stay in mock mode whatever the setting says.
+
+1. **At upload:** the file is queued and held with its own hold, "reading
+   automatically". The portal answers at once, and the customer sees
+   "Under review".
+2. **In the background:** the console runs a worker (`tools/serve.py`) that
+   takes one document at a time, at most one call every
+   `WALLESTER_UC4_LIVE_READ_INTERVAL` seconds. It uses the current
+   `LLM_PROVIDER` at temperature 0 and makes two calls per document:
+   - the live quality check;
+   - then, when Step 4 reaches the document, the live extractor.
+
+   The existing guardrails apply: strict JSON, the flag vocabulary, the KB
+   field allow-list, and the 0.70 confidence floor. A failed call never counts
+   as a pass.
+3. **On the console:** a document waiting for the model shows *"Reading
+   automatically... (n in queue)"*.
+4. **If the call fails** for any reason (no key, network, rate limit, invalid
+   reply), the document takes the mock path:
+   - the visual-check hold, then the typing form;
+   - the form shows *"Automatic reading unavailable: <reason>. Type in the
+     fields instead."*
+
+Every value carries exactly one of three labels:
+- *"read by live model (provider:model/prompt)"*;
+- *"mock: recognised demo sample file"*;
+- *"entered by an analyst"*.
+
+`tests/test_hybrid_extraction.py` covers all of this with a fake client. It
+makes no real API calls.
+
 ### Uploads after the assessment
 
 A document that arrives once the paid checks have answered is still checked and
@@ -289,6 +331,8 @@ Read from the environment; the defaults are the demo's.
 | `WALLESTER_UC4_MAX_UPLOAD_MB` | `10` | The largest file the portal accepts |
 | `WALLESTER_UC4_PORTAL_URL` | `http://127.0.0.1:8701` | The address in a copied customer link |
 | `WALLESTER_UC4_VIRUS_SCANNER` | `mock` | `mock` (reports clean) or `live` (stub) |
+| `WALLESTER_UC4_EXTRACTION_FOR_NEW_UPLOADS` | `mock_only` | `live_if_available` reads new, unrecognised portal uploads with the live model (see *Hybrid extraction*) |
+| `WALLESTER_UC4_LIVE_READ_INTERVAL` | `3` | Seconds between the background reader's live calls |
 | `LLM_PROVIDER` | `anthropic` | Which model answers in live mode (see *Live mode*) |
 
 **One clock.** Every timestamp, expiry and "waited N days" reads the injected
@@ -515,13 +559,39 @@ fill their declared placeholders; it writes no sentences. Three gates:
   3. the rendered text is scanned for restricted wording before any send, and a
      hit blocks it and is audited. A send writes to the outbox table; no mail
      leaves this POC.
+The console's Decision tab previews, for the selected decision, the customer
+message it would trigger (decision.preview_customer_message: the same template
+choice, rendering and wording scan as the real send, storing nothing), and after
+the decision shows what was sent with a link to the Communications tab. On a
+confirmed sanctions match the decision sends nothing - a compliance task is
+raised - and compliance approves the message separately with the existing
+Send-a-message action, so human_decision_recorded and
+customer_communication_approved stay two acts.
 Decisions go through decision.record_decision(), which refuses to approve over an
 open hold, enforces the role the taxonomy requires, COMPUTES override_flag by
 comparing the decision with the recommendation, and requires every cited
 evidence id to exist.
 The resubmission loop runs on a Clock (real, or fake for the tests): one reminder
-after 14 days, closed_withdrawn after 30. A re-upload re-runs Step 3 for that
+after 14 days, closed_withdrawn after 30, both counted from the FIRST request
+(communication.first_request_at) - a new upload or attempt never resets them.
+The reminder is one message listing every item still owed, under the approved
+request wording (TPL-0001, situation `reminder`); the dataset used TPL-0005, a
+status update that names no items. Reminders go whenever the customer owes at
+least one item, even while another hold (an analyst on a different document)
+is open; the automatic closure happens only when the customer is the sole
+remaining blocker. Reminders stop when nothing is owed any more
+(an acceptable replacement, a waived item, an item handed to an analyst after 3
+unreadable uploads) or the case is closed. A re-upload re-runs Step 3 for that
 checklist item only.
+
+Customer follow-up (console, Communications tab) shows per request: the items
+asked for, when it was sent, delivery as "Simulated - sent to demo outbox"
+(never "delivered"), when the customer viewed it, the next reminder due, the
+reminders since and a status (Awaiting customer / Reminder sent / Completed /
+Closed), all in UTC. It is read from the communication, outbox and audit
+records; no table was added. Opening the portal's Messages page audits
+`message_viewed` (actor applicant) and changes nothing else - reminders never
+read it.
 
 ## Step 3 - document quality (Section 5.3)
 Deterministic checks (file type, expiry, proof-of-address age, page count) run in code.
