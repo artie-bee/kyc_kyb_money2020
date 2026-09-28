@@ -33,6 +33,10 @@ Then show the **operations dashboard** (10.1).
 
 **Proves:** *Better status visibility* · *Synthetic-data readiness* · *No weak-compliance implication*
 
+Then click **My queue** in the sidebar. As **analyst** it lists only the cases an analyst can act on now, each with why it is there and what can be done. Case 6 (the possible sanctions match) is **not** in it, because only compliance may decide it. Under **View as**, choose **compliance** and click **Show my queue**: cases **12** and **6** come first, the confirmed and the possible sanctions match. **Next case** on any case page opens the next one in this queue, and never a case outside it.
+
+**What to say:** "Each person only sees what they can act on. The queue follows the same permission rules the system enforces when someone records a decision, so it can't offer something the backend would refuse."
+
 Briefly open the **Agent reuse** screen (10.9), headed "Agent reuse (10.9)": "This maps which parts follow the generic KYC/KYB agent pattern and which are Wallester-specific overrides: your applicant types, your requirement packs, your templates, your risk matrix."
 
 Be precise here. This POC is a standalone build that *represents* the reuse split; it wasn't built on top of an actual existing agent. Section 15 accepts "reused or represented," and Section 18 warns against implying the generic agent fits Wallester without adaptation, so say "represents" and "maps," not "is running."
@@ -68,6 +72,7 @@ Be precise here. This POC is a standalone build that *represents* the reuse spli
 4. **Checks tab:** it's **empty**. Pause here; this is the key moment.
 5. **Communications tab:** nothing has been drafted yet. Under **Send a message**, choose situation `resubmission` and click **Draft and approve as me**. The request appears and names exactly what's missing, in plain language: *ubo declaration, id document*.
 6. **Customer view:** the applicant sees a clear status and knows exactly what to do next.
+7. **Portal** (optional, http://127.0.0.1:8701/demo): **Open as this customer** next to *Northbridge Craft Supplies Ltd*. The **Next step** card at the top reads *"Upload a clearer copy: Identity document (passport or ID card) - Denton Halliwell"*, with the upload control right there. On **Documents needed**, point at the three tips under the ID row before anything is uploaded: *not expired*, *flat in good light with every corner visible*, *no glare*.
 
 **What to say:** "The system caught the problem *before* spending money on any paid verification. No identity check, no registry lookup, no screening call was made for a document that was never going to pass. And the customer got a precise request instead of a vague 'please resend your documents.' No one typed that message; it came from the template library and the checklist."
 
@@ -86,7 +91,7 @@ Be precise here. This POC is a standalone build that *represents* the reuse spli
 Both are synthetic specimens. Never upload a real document.
 
 1. **Console, Case 2:** click **Copy customer link** under the case header, then **Copy**. The link opens this one application only. It carries no case number and expires after 14 days.
-2. **Portal:** paste the link into the second tab. Open **Documents needed**. The header reads **9 accepted · 0 under review · 2 still needed**.
+2. **Portal:** paste the link into the second tab. The **Next step** card says what to do first: *"Upload a clearer copy: Identity document (passport or ID card) - Denton Halliwell"*. Open **Documents needed**. The header reads **9 accepted · 0 under review · 2 still needed**. Before uploading, point at the tips under the identity-document row: they say what a good copy looks like, and they come from the knowledge base rather than the page.
    - *Identity document (passport or ID card) - Denton Halliwell* shows **Resubmission needed**, the reason *"We could not read this document clearly…"*, and *Previous upload: director_id_halliwell_scan.jpg (replaced when you upload a new one)*.
    - *Declaration of beneficial owners* shows **Not uploaded yet**.
 3. **Portal:** upload `halliwell_id_clear.jpg` against the identity document and `northbridge_ownership_declaration.pdf` against the declaration. Each upload answers *"Thank you. We have your file and it is now under review."* Both rows now say **Under review**.
@@ -124,8 +129,8 @@ Both are synthetic specimens. Never upload a real document.
 
 **Story:** a UK company's registration number matches the register, but its registered address doesn't.
 
-1. Open Case 3. After Reset demo it is **held**: one field needs an analyst, and the registry check hasn't run yet, because the paid check waits for the field to be confirmed.
-2. **Documents tab:** on `registry_extract_calderwick.pdf`, the `registered_address` field was read at low confidence (**0.58**) and is highlighted. The value shown is already right; the analyst is confirming a faint reading, not fixing a wrong one. As **analyst**, click **Correct** and enter exactly:
+1. Open Case 3. After Reset demo it is **held**: one field needs an analyst, and the registry check hasn't run yet, because the paid check waits for the field to be confirmed. Start from the **Why is this case here?** panel at the top: *"1 extracted field(s) cannot be relied on as read"*, with the button **Accept or correct the fields**. Click it.
+2. **Documents tab:** the review is side by side: the file on the left, its fields on the right. On `registry_extract_calderwick.pdf`, the `registered_address` field was read at low confidence (**0.58**) and is highlighted in red. The keyboard works here too: click inside the document, and **A** accepts as read, **C** corrects (the hint *"A: Accept · C: Correct"* is shown); a reason is still required either way. The value shown is already right; the analyst is confirming a faint reading, not fixing a wrong one. As **analyst**, click **Correct** and enter exactly:
    `Unit 7 Calderwick Way, Leeds LS12 4QT, United Kingdom`
 3. The case now carries on by itself through the remaining checks. **Checks tab:** registry results show the two addresses **side by side**:
    - Register holds: *Enterprise House, 14 Bell Lane, Leeds LS11 9PT, United Kingdom*
@@ -147,8 +152,8 @@ Both are synthetic specimens. Never upload a real document.
 
 **Story:** a corporate applicant owns through an indirect chain of holding companies.
 
-1. Open Case 4. After Reset demo it has **no risk score yet**, because it's held. Show there are **two open holds** at once: one from the document quality step (the ownership chart) and one from extraction (**one** low-confidence field).
-2. **Documents tab:** as **analyst**, release the ownership chart with a reason. Show the case **does not move on**, because extraction's hold is still open. Then accept the field that's waiting (`indirect_ownership_path`) as read — and look again: reading the released chart has turned up a second one, `intermediate_entity` at 0.55. Accept that too. The case now carries on by itself.
+1. Open Case 4. After Reset demo it has **no risk score yet**, because it's held. Show there are **two open holds** at once: one from the document quality step (the ownership chart) and one from extraction (**one** low-confidence field). The **Why is this case here?** panel lists both, each with its own button: **Review the held document** and **Accept or correct the fields**.
+2. **Documents tab** (from **Review the held document**): as **analyst**, release the ownership chart with a reason. The faint values sit beside the file, highlighted, and **A** / **C** work as in Scenario 3. Show the case **does not move on**, because extraction's hold is still open. Then accept the field that's waiting (`indirect_ownership_path`) as read — and look again: reading the released chart has turned up a second one, `intermediate_entity` at 0.55. Accept that too. The case now carries on by itself.
 3. **People tab:** effective ownership is **calculated, not copied**: the app shows `70% x 45% = 31.5%`, above the 25% UBO threshold. On the **Checks tab**, the registry section says the register does **not** corroborate the declared beneficial ownership.
 4. **Risk tab:** band **high**, score **69** → enhanced due diligence route.
 5. **Contrast with the control:** open **Case 10**. Same applicant type and requirement pack, but a transparent, registry-supported chain. It scores **15** against Case 4's **69**.
@@ -217,6 +222,8 @@ Both are synthetic specimens. Never upload a real document.
    - *Owners:* Owner 1: Kristiina Vaher · Directly · 100 (date of birth not needed; she is the director);
    - *A few facts:* No · No · No · Yes · No;
    - tick *Every detail here is made up for the demo*.
+
+   On *Your business*, type the registration number **EE-16550321** first and click **Look up my company**. The business name and registered address fill in, under a note headed **Simulated registry lookup**; both fields stay editable. Point out the label: this is a demo lookup, and it only fills the form. The checks later compare the register with what the *documents* say.
 
    Point out that nothing on the form asks what *kind* of applicant this is. The system decides that from the facts (here, *SME company*).
 2. **Portal:** the customer lands on *My application*, signed in to the new case (reference **WAL-DEMO-0001**). Click **Documents needed**: **0 accepted · 0 under review · 11 still needed**, one row per document, each with its own upload area.

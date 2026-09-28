@@ -409,10 +409,18 @@ def queue_page(conn, role="analyst", **kw) -> str:
                   "Nothing needs you as " + role + " right now.")]
     start = ('<p><a class="btn btn--primary" href="/case/' + e(first) + '">Start with '
              + e(first) + "</a></p>" if first else "")
+    # Viewing as another role uses the existing /action/settings route: it only
+    # changes whose queue is shown, and every action still checks the role.
+    picker = ('<form method="post" action="/action/settings" class="btn-row rolepick">'
+              '<input type="hidden" name="back" value="/queue">'
+              '<label for="queue-role">View as</label><select name="role" id="queue-role">'
+              + "".join('<option value="' + r + '"' + (" selected" if r == role else "") + ">"
+                        + r + "</option>" for r in ("analyst", "compliance"))
+              + '</select><button class="btn" type="submit">Show my queue</button></form>')
     return ('<header class="page"><h1>My queue</h1><p class="sub">Cases you can act on as '
-            "<strong>" + e(role) + "</strong>: the worst open hold first, then the risk band, "
-            "then the oldest. Switch role on the decision form.</p></header>"
-            + start + "".join(body))
+            "<strong>" + e(role) + "</strong>: critical and sanctions cases first, then the "
+            "worst open hold, then the risk band, then the oldest.</p></header>"
+            + picker + start + "".join(body))
 
 
 def _reassessment_panel(conn, case_id) -> str:
