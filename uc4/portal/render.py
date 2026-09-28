@@ -234,21 +234,85 @@ def messages(view) -> str:
 # 4. Demo case selector
 # ---------------------------------------------------------------------------
 
-def demo_selector(customers) -> str:
-    rows = "".join(
-        '<li class="pick"><div><span class="pick__name">' + e(c["applicant_name"])
-        + '</span><span class="pick__ref">' + e(c["case_id"]) + "</span></div>"
+GROUP_NOTE = {
+    "Needs your action": "Documents we are still waiting for.",
+    "In review": "Nothing needed from the customer right now.",
+    "Closed": "Applications that have finished.",
+}
+GROUP_TONE = {"Needs your action": "warn", "In review": "info", "Closed": "neutral"}
+
+
+def _date(stamp) -> str:
+    """2026-09-28T11:38:34Z -> 28 Sep 2026."""
+    if not stamp:
+        return ""
+    y, m, d = stamp[:10].split("-")
+    months = "Jan Feb Mar Apr May Jun Jul Aug Sep Oct Nov Dec".split()
+    return str(int(d)) + " " + months[int(m) - 1] + " " + y
+
+
+def _card(c) -> str:
+    """One customer. Everything on it is customer-safe (customer_view.demo_card)."""
+    label = ("Partner programme" if c["partner"] and c["group"] != "Closed" else
+             f"{c['still_needed']} document{'s' if c['still_needed'] != 1 else ''} needed"
+             if c["group"] == "Needs your action" else
+             "With our team" if c["group"] == "In review" else "Closed")
+    last = ("Last message " + _date(c["last_message"]) if c["last_message"]
+            else "No messages yet")
+    search = (c["applicant_name"] + " " + c["case_id"]).lower()
+    return (
+        '<li class="pick" data-search="' + e(search) + '">'
+        '<div class="pick__main">'
+        '<div class="pick__top"><span class="pick__name">' + e(c["applicant_name"]) + "</span>"
+        '<span class="chip chip--' + GROUP_TONE[c["group"]] + '"><span class="chip__dot">'
+        "</span>" + e(label) + "</span></div>"
+        '<p class="pick__status">' + e(c["status_text"]) + "</p>"
+        '<p class="pick__meta"><span class="pick__ref">' + e(c["case_id"]) + "</span>"
+        " &middot; Applied " + e(_date(c["applied_on"])) + " &middot; " + e(last) + "</p>"
+        "</div>"
         '<form method="post" action="/demo/open">'
         '<input type="hidden" name="case_id" value="' + e(c["case_id"]) + '">'
-        '<button class="btn" type="submit">Open as this customer</button></form></li>'
-        for c in customers)
-    return ('<header class="phero"><h1>Choose a demo customer</h1>'
-            '<p class="sub">Open the portal as any applicant in the demo, without typing '
-            "any details. A real customer arrives from the link in our email instead, and "
-            "only ever sees their own application.</p></header>"
-            '<p class="cta"><a class="btn btn--primary" href="/apply">Start a new demo '
-            "application</a></p>"
-            '<ul class="picks">' + rows + "</ul>")
+        '<button class="btn" type="submit">Open as this customer</button></form></li>')
+
+
+def demo_selector(customers, q: str = "") -> str:
+    """The presenter's front door: start a new application, or open any demo
+    customer - grouped by what they need, searchable by name or reference.
+    The search is a plain GET form (works with scripts off); portal.js filters
+    as you type."""
+    q = (q or "").strip()
+    shown = [c for c in customers
+             if not q or q.lower() in (c["applicant_name"] + " " + c["case_id"]).lower()]
+    groups = []
+    for group in GROUP_NOTE:
+        cards = [c for c in shown if c["group"] == group]
+        if not cards:
+            continue
+        groups.append(
+            '<section class="pgroup" data-group>'
+            '<h2 class="pgroup__head">' + e(group)
+            + ' <span class="pgroup__count" data-count>' + str(len(cards)) + "</span></h2>"
+            '<p class="pgroup__note">' + e(GROUP_NOTE[group]) + "</p>"
+            '<ul class="picks">' + "".join(_card(c) for c in cards) + "</ul></section>")
+    empty = ('<p class="empty" id="pick-empty"' + ("" if not shown else " hidden") + ">"
+             "No customer matches that name or reference.</p>")
+    clear = (' <a class="psearch__clear" href="/demo">Clear</a>' if q else "")
+    return (
+        '<header class="phero"><h1>Choose a demo customer</h1>'
+        '<p class="sub">Open the portal as any applicant in the demo, without typing '
+        "any details. A real customer arrives from the link in our email instead, and "
+        "only ever sees their own application.</p></header>"
+        '<section class="pstart">'
+        '<div><h2 class="pstart__title">New customer</h2>'
+        '<p class="pstart__text">Walk through the application form as a new business, '
+        "then upload its documents.</p></div>"
+        '<a class="btn btn--primary" href="/apply">Start a new demo application</a></section>'
+        '<form class="psearch" method="get" action="/demo" role="search">'
+        '<label class="psearch__label" for="pick-q">Find a customer</label>'
+        '<div class="psearch__row"><input type="search" id="pick-q" name="q" value="' + e(q)
+        + '" placeholder="Company name or reference, e.g. WAL-ONB-0002" autocomplete="off">'
+        '<button class="btn" type="submit">Search</button>' + clear + "</div></form>"
+        + "".join(groups) + empty)
 
 
 # ---------------------------------------------------------------------------

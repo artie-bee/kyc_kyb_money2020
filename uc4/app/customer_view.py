@@ -391,6 +391,34 @@ def customer_checklist(conn, case_id: str, kb: KnowledgeBase | None = None) -> d
     }
 
 
+# The demo selector's three groups, in the order they are shown.
+NEEDS_ACTION, IN_REVIEW, CLOSED_GROUP = "Needs your action", "In review", "Closed"
+DEMO_GROUPS = (NEEDS_ACTION, IN_REVIEW, CLOSED_GROUP)
+
+
+def demo_card(conn, case_id: str) -> dict:
+    """One customer on the demo selector, in customer-safe terms only: the same
+    status wording, document counts and messages the portal shows that customer
+    once opened. The group is read from those - never from holds or findings."""
+    view = customer_view(conn, case_id)
+    cl = customer_checklist(conn, case_id)
+    if view["closed"]:
+        group = CLOSED_GROUP
+    elif cl["open"] and cl["still_needed"] and not view["partner"]:
+        group = NEEDS_ACTION
+    else:
+        group = IN_REVIEW
+    last = view["messages"][-1]["sent_at"] if view["messages"] else None
+    # The line under the name is what the customer sees first once in: the
+    # next-step card when they owe something, the plain status otherwise.
+    line = next_step(cl, view)["text"] if group == NEEDS_ACTION else view["status_text"]
+    return {"case_id": case_id, "applicant_name": view["applicant_name"],
+            "group": group, "status_text": line,
+            "still_needed": cl["still_needed"] if group == NEEDS_ACTION else 0,
+            "partner": view["partner"], "last_message": last,
+            "applied_on": view["applied_on"]}
+
+
 def visible_text(page: str) -> str:
     """The words a person would read on a rendered page: no tags, no scripts,
     no styles, entities decoded."""

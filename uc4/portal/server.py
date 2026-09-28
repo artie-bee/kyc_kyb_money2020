@@ -39,7 +39,7 @@ sys.path.insert(0, str(UC4))
 
 from app import data                                                  # noqa: E402
 from app.customer_view import (customer_checklist, customer_view,        # noqa: E402
-                               leaks, next_step)
+                               demo_card, leaks, next_step)
 from orchestrator.steps.document_quality import MAX_UPLOAD_BYTES, UploadRefused  # noqa: E402
 from portal import apply, render, render_form                         # noqa: E402
 
@@ -153,14 +153,12 @@ class Handler(BaseHTTPRequestHandler):
                     if path == "/demo":
                         if not demo:
                             return self._page(render.page("Not found", render.not_found()), 404)
-                        customers = [{"case_id": c["case_id"],
-                                      "applicant_name": customer_view(conn, c["case_id"])
-                                      ["applicant_name"]}
-                                     for c in conn.execute(
-                                         "SELECT case_id FROM onboarding_case ORDER BY case_id")]
-                        return self._page(render.page("Choose a demo customer",
-                                                      render.demo_selector(customers),
-                                                      flash=flash, demo=demo))
+                        customers = [demo_card(conn, c["case_id"]) for c in conn.execute(
+                            "SELECT case_id FROM onboarding_case ORDER BY case_id")]
+                        return self._page(render.page(
+                            "Choose a demo customer",
+                            render.demo_selector(customers, query.get("q", [""])[0]),
+                            flash=flash, demo=demo))
                     if path == "/apply":
                         if not demo:
                             return self._page(render.page("Not found", render.not_found()), 404)
