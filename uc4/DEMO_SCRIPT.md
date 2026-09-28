@@ -184,10 +184,11 @@ Both are synthetic specimens. Never upload a real document.
 **Story:** a director returns a possible sanctions match. This is the most important scenario; slow down.
 
 1. Open Case 6. Status: **analyst review required**; band **critical** (the sanctions floor, not the score).
-2. **Decision tab, as analyst:** there is no **approve** to attempt. Point at the panel headed *Not offered at band `critical`*, which lists approve and conditional approve and the bands that do allow them. Then choose **escalate** and record it as **analyst**. The app shows the backend's refusal — *"analyst.demo is analyst, but the band is critical, so this decision is compliance's to take"*. Read it aloud.
-3. Set the role on the decision form to **compliance**. Record **escalate**, with an escalation target and reason.
-4. **Customer view:** the escalation you just recorded sent the applicant one message, and it is generic — their application is with the onboarding team for an additional manual review step, and no further documents are needed. That is everything they have ever been sent. Nothing mentions sanctions, screening or matches.
-5. Optional: mention that the database itself blocks any attempt to change a sanctions match to "no match." Only a human decision can resolve it.
+2. **Decision tab, as analyst:** there is no **approve** to attempt. Open the **Decision** dropdown: at band `critical` it offers no approve or conditional approve — only what the taxonomy allows at this band. Then choose **escalate** and record it as **analyst**. The app shows the backend's refusal — *"analyst.demo is analyst, but the band is critical, so this decision is compliance's to take"*. Read it aloud.
+3. Set the role on the decision form to **compliance** and choose **escalate**. **Before recording**, scroll to **Customer message** under the form: it previews exactly what the customer would be sent — template `TPL-0004`, *"your application … is with our onboarding team for an additional manual review step"* — with the note *"Generic wording is used because this case has an internal finding."* Changing the decision changes the preview. Nothing is sent yet.
+4. Record **escalate**, with an escalation target and reason. The **Customer message** box at the top of the tab now shows what was sent: the message id, `TPL-0004`, the time in UTC and *Simulated - sent to demo outbox*, with **See all communications** linking to the Communications tab.
+5. **Customer view:** that one generic message is everything the applicant has ever been sent. Nothing mentions sanctions, screening or matches.
+6. Optional: mention that the database itself blocks any attempt to change a sanctions match to "no match." Only a human decision can resolve it.
 
 **What to say:** "The AI can't clear a sanctions match, and neither can an analyst without the right role. The system won't even let the attempt through. And the customer isn't tipped off: the message they get is identical to any other case under review."
 
@@ -280,10 +281,19 @@ Both are synthetic specimens. Never upload a real document.
 
 | Question from the audience | Show |
 |---|---|
-| "What about a confirmed sanctions hit?" | **Case 12** — clear match, critical, no automatic customer message; compliance decides what (if anything) the customer is told. |
+| "What about a confirmed sanctions hit?" | **Case 12** — clear match, critical. See *Case 12 steps* below: the decision alone sends nothing, and compliance approves the customer message as a separate step. |
 | "What if the company doesn't exist any more?" | **Case 11** — dissolved on the register; eligibility floor recommends reject; analyst agrees. |
 | "What if a provider is down?" | **Case 13** — unavailable media check never counts as a pass; the case is held as insufficient evidence. |
 | "What if the customer just stops replying?" | **Case 14** — held for the customer, awaiting a proof of address. The reminder schedule is `kb/communication_schedule.csv`; the demo database stops at the hold rather than fast-forwarding a month, and `python tools/run_demo.py` plays the thirty days out and closes the case as withdrawn. |
+
+### Case 12 steps — confirmed sanctions match · WAL-ONB-0012 · 3 min
+
+1. Open Case 12 and the **Decision tab**, with the role on the form set to **compliance**. Choose **escalate**. The **Customer message** preview reads *"No automatic message. Compliance decides separately what the customer is told."* — for every decision offered.
+2. Record **escalate** with an escalation target and reason. **Nothing is sent.** The **Customer message** box at the top of the tab repeats *"No automatic message …"*, and the **Communications** tab shows a compliance task, *decide customer communication*.
+3. Compliance now approves the customer message as a **separate step**: on the Decision tab click **Approve the customer message as compliance** — or on the Communications tab, under **Send a message**, choose situation `manual_review_underway` and click **Draft and approve as me**. The generic `TPL-0004` holding message is sent (*Simulated - sent to demo outbox*).
+4. Optional: the **Timeline** tab shows two separate events, `human_decision_recorded` and then `customer_communication_approved`: deciding the case and approving what the customer reads are two acts, each with a name on it.
+
+**What to say:** "On a confirmed match the system writes nothing to the customer on its own — not even with the decision. What the customer is told is a compliance decision in its own right, and the audit trail keeps it separate."
 
 ---
 
