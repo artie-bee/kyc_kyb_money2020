@@ -589,24 +589,28 @@ remaining blocker. Reminders stop when nothing is owed any more
 unreadable uploads) or the case is closed. A re-upload re-runs Step 3 for that
 checklist item only.
 
-The operations dashboard (web/render.dashboard) puts every open case in exactly one
-group (data._attention): the owner of its worst open hold - Needs analyst, Needs
-compliance, Waiting on customer - or, with nothing held, ready for a decision or
-on the white-label branch. Four cards (the three owners and the oldest alert)
-head the page; "Needs attention" lists the cases with an open alert, oldest
-first: applicant, case id, restricted tag and owner; what it is waiting for in
-plain words (kb/hold_reason_wording.csv); band; and the alert as "2026-09-29
-09:10 UTC · 25 min ago", measured on the injected clock so it follows the demo
-clock. Under it: how many are ready for a decision and on the white-label branch.
-A side panel draws "Cases by status" (an inline SVG donut, the open count in the
-middle, every status with its count in the legend) and "Risk bands" (bars for
-critical / high / medium / low / not scored; not scored includes insufficient
-evidence), in the same colours as the badges. Every card, slice, legend row, bar
-and count is a plain link (?need=, ?status=, ?band=, ?view=all) that filters on
-the server, so the page works with scripts off. "Show all" is every case with the
-full columns and the status / owner / follow-up filters. Customer timing -
-waiting since, last view, next reminder - is on the case detail (follow-up panel
-and timeline).
+The operations dashboard (web/render.dashboard) is a light, Datadog-style page
+(light by default; "Toggle theme" switches to dark). One colour language runs
+through tiles, charts and badges, defined once as --role-* variables in
+web/static/app.css with light and dark values: amber = analyst, red =
+compliance / critical, blue = customer, green = ready / low, grey = not scored /
+system; tile text meets WCAG AA. Every open case is in exactly one group
+(data._attention): the owner of its worst open hold, or with nothing held, ready
+for a decision or on the white-label branch. Four tiles - Needs analyst, Needs
+compliance, Waiting on customer, Ready for decision - head the page, with the
+demo clock and "Oldest alert" in the header. A charts row draws "Cases by
+status" (horizontal bars) and "Risk bands" (an inline SVG donut, the open total
+in the middle, every band with its count in the legend; not scored includes
+insufficient evidence), and a "Hold status" strip shows with holds / no holds /
+restricted, each as wide as its count. Underneath, every case, oldest alert
+first: Case (applicant, case id, restricted tag), Status in plain words, Owner,
+Band, Score, Holds, Hold detail (kb/hold_reason_wording.csv, owner in brackets)
+and Alert came in ("2026-09-29 09:10 UTC · 25 min ago" on the injected clock),
+with the status / owner / follow-up filters. Every tile, bar, legend row and
+strip block is a plain link (?need=, ?status=, ?band=, ?holds=, ?restricted=)
+that filters on the server, so the page works with scripts off. Customer
+timing - waiting since, last view, next reminder - is on the case detail
+(follow-up panel and timeline).
 
 Optional early nudge: `unviewed_nudge` in kb/communication_schedule.csv, 0 (off)
 by default. Set to N days and a request the customer has not viewed after N days

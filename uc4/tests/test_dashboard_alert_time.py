@@ -101,9 +101,9 @@ def test_the_removed_columns_are_gone_but_the_case_detail_keeps_the_data(conn):
     assert "Reminder due 2026-10-12" in timeline and "Not viewed yet" in timeline
 
 
-def test_case_and_applicant_stay_in_view(conn):
-    css = (ROOT / "web" / "static" / "app.css").read_text(encoding="utf-8")
-    assert "#cases th:nth-child(1), #cases td:nth-child(1) { position:sticky; left:0;" in css
-    assert "#cases th:nth-child(2), #cases td:nth-child(2) { position:sticky; left:150px;" in css
-    head = re.findall(r"<th scope=\"col\"[^>]*>(\w[\w ]*)", render.dashboard(conn, {"view": "all"}))
-    assert head[:2] == ["Case", "Applicant"] and len(head) == 10
+def test_the_case_column_comes_first_and_the_table_is_compact(conn):
+    """The applicant and case id share the first column, so the table fits a
+    laptop without a sideways scroll (checked by eye at 1366 px)."""
+    head = re.findall(r"<th scope=\"col\"[^>]*>(\w[\w ]*)",
+                      render.dashboard(conn, {"view": "all"}).split('id="cases"')[1])
+    assert head[0] == "Case" and len(head) == 8 and "Applicant" not in head

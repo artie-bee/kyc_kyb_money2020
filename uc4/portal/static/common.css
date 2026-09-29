@@ -20,10 +20,21 @@
 
   --accent:#2c5fa8; --accent-soft:#eaf0fa; --accent-line:#b0c6e4;
 
-  --ok:#2f6f4f;   --ok-bg:#eaf3ee;   --ok-line:#a9ccb9;
-  --info:#2c5fa8; --info-bg:#eaf0fa; --info-line:#b0c6e4;
-  --warn:#8a6116; --warn-bg:#faf2e2; --warn-line:#e0c894;
-  --bad:#963232;  --bad-bg:#faecec;  --bad-line:#e0b0b0;
+  /* The console's colour language (web/static/app.css), copied: amber =
+     analyst, red = compliance, blue = customer, green = ready, grey = neutral.
+     The tones below are those roles under their older names. */
+  --role-analyst:#8a6116;    --role-analyst-bg:#faf2e2; --role-analyst-line:#e0c894;
+  --role-compliance:#963232; --role-compliance-bg:#faecec; --role-compliance-line:#e0b0b0;
+  --role-customer:#2c5fa8;   --role-customer-bg:#eaf0fa;   --role-customer-line:#b0c6e4;
+  --role-ready:#2f6f4f;      --role-ready-bg:#eaf3ee;      --role-ready-line:#a9ccb9;
+  --ok:var(--role-ready);        --ok-bg:var(--role-ready-bg);
+  --ok-line:var(--role-ready-line);
+  --info:var(--role-customer);   --info-bg:var(--role-customer-bg);
+  --info-line:var(--role-customer-line);
+  --warn:var(--role-analyst);    --warn-bg:var(--role-analyst-bg);
+  --warn-line:var(--role-analyst-line);
+  --bad:var(--role-compliance);  --bad-bg:var(--role-compliance-bg);
+  --bad-line:var(--role-compliance-line);
 
   --r:5px;
   --mono:"IBM Plex Mono","JetBrains Mono","SFMono-Regular",Consolas,monospace;
@@ -37,10 +48,10 @@
     --bg:#11151a; --surface:#171c22; --surface-2:#1c2229;
     --line:#2a323b; --line-soft:#222931;
     --accent:#7aa6e0; --accent-soft:#1b2534; --accent-line:#2d4363;
-    --ok:#79c298;   --ok-bg:#16241d;   --ok-line:#2f5442;
-    --info:#7aa6e0; --info-bg:#161f2d; --info-line:#2d4363;
-    --warn:#d9b167; --warn-bg:#2a2317; --warn-line:#59492a;
-    --bad:#e08a8a;  --bad-bg:#2b1a1a;  --bad-line:#5c3434;
+    --role-analyst:#d9b167;    --role-analyst-bg:#2a2317; --role-analyst-line:#59492a;
+    --role-compliance:#e08a8a; --role-compliance-bg:#2b1a1a; --role-compliance-line:#5c3434;
+    --role-customer:#7aa6e0;   --role-customer-bg:#161f2d;   --role-customer-line:#2d4363;
+    --role-ready:#79c298;      --role-ready-bg:#16241d;      --role-ready-line:#2f5442;
   }
 }
 :root[data-theme="dark"] {
@@ -48,10 +59,10 @@
   --bg:#11151a; --surface:#171c22; --surface-2:#1c2229;
   --line:#2a323b; --line-soft:#222931;
   --accent:#7aa6e0; --accent-soft:#1b2534; --accent-line:#2d4363;
-  --ok:#79c298;   --ok-bg:#16241d;   --ok-line:#2f5442;
-  --info:#7aa6e0; --info-bg:#161f2d; --info-line:#2d4363;
-  --warn:#d9b167; --warn-bg:#2a2317; --warn-line:#59492a;
-  --bad:#e08a8a;  --bad-bg:#2b1a1a;  --bad-line:#5c3434;
+  --role-analyst:#d9b167;    --role-analyst-bg:#2a2317; --role-analyst-line:#59492a;
+  --role-compliance:#e08a8a; --role-compliance-bg:#2b1a1a; --role-compliance-line:#5c3434;
+  --role-customer:#7aa6e0;   --role-customer-bg:#161f2d;   --role-customer-line:#2d4363;
+  --role-ready:#79c298;      --role-ready-bg:#16241d;      --role-ready-line:#2f5442;
 }
 
 * { box-sizing:border-box; }

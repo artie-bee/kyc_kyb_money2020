@@ -29,7 +29,7 @@ Total running time: about 35 minutes (5 min opening, 25 min scenarios, 5 min clo
 
 Then show the **operations dashboard** (10.1).
 
-**Point out:** the four cards across the top — **Needs analyst**, **Needs compliance**, **Waiting on customer**, **Oldest alert** — say who has work now; click one and the list narrows to those cases. **Needs attention** lists only cases with an open alert, oldest first, with what each is waiting for in plain words. On the right, **Cases by status** and **Risk bands** count every open case; click a slice or a bar to filter. **Show all** gives every case with the full columns. Mention that it runs in mock mode: everything today runs on synthetic data, with no live customer or identity data.
+**Point out:** the four coloured tiles — **Needs analyst** (amber), **Needs compliance** (red), **Waiting on customer** (blue), **Ready for decision** (green) — say who has work now; click one and the table narrows to those cases. The header shows the demo clock and the **Oldest alert**. **Cases by status** (bars) and **Risk bands** (donut) count every open case, numbers always shown; click a bar or a legend row to filter. The **Hold status** strip splits the open cases into with holds and no holds, plus how many are restricted. Underneath, every case, oldest alert first, with what each is waiting for in plain words. The colours mean the same thing everywhere: amber analyst, red compliance or critical, blue customer, green ready or low, grey system or not scored. Mention that it runs in mock mode: everything today runs on synthetic data, with no live customer or identity data.
 
 **Proves:** *Better status visibility* · *Synthetic-data readiness* · *No weak-compliance implication*
 
@@ -49,7 +49,7 @@ Be precise here. This POC is a standalone build that *represents* the reuse spli
 
 **Story:** an Estonian freelancer submits complete documents.
 
-1. Open Case 1: on the dashboard it is not in **Needs attention** (nothing is held), so click **Show all**, or use the sidebar's case selector.
+1. Open Case 1: on the dashboard click the green **Ready for decision** tile, or use the sidebar's case selector.
 2. **Documents tab:** every document is accepted, with no flags. Extracted fields all show high confidence.
 3. **Checks tab:** identity pass; sanctions, PEP and adverse media all clear.
 4. **Risk tab:** band **low**, score **0**. No risk factors fired at all: the table reads *No factors fired.* Point out the recommended action is *approve*, but a person still has to make the decision.
@@ -231,7 +231,7 @@ Both are synthetic specimens. Never upload a real document.
 2. **Portal:** the customer lands on *My application*, signed in to the new case (reference **WAL-DEMO-** plus the next number: references are never reused, so it continues from the last one issued, even after Reset demo). Click **Documents needed**: **0 accepted · 0 under review · 11 still needed**, one row per document, each with its own upload area.
 3. **Portal, the refusal:** upload `07_identity_document_BLURRED.jpg` against *Identity document (passport or ID card) - Kristiina Vaher*. It is refused in plain words: *"We could not accept this file. We could not read this document clearly. Please upload a sharp, complete copy of the original."* The row now shows **Resubmission needed**.
 4. **Portal:** upload `08_identity_document_clear.jpg` against the same row, then the ten other files, each against the item named in `FORM_VALUES.md`. Each one answers *"…now under review"*: nothing is read until the whole checklist is in. The last file sets off the run and answers *"Your file has been accepted"*. The header reads **11 accepted · 0 under review · 0 still needed**.
-5. **Console** (http://127.0.0.1:8700/): open the new **WAL-DEMO-** case: it is under **Needs attention** while its documents are being checked, and always under **Show all**.
+5. **Console** (http://127.0.0.1:8700/): open the new **WAL-DEMO-** case from the dashboard's case table (or the sidebar's case selector).
    - **Status: ready_for_decision**, owner analyst, type *sme_corporate*, no open holds.
    - **Documents tab:** all 12 uploads are marked *uploaded by applicant*. The blurred ID is still in the history. Every document and every field reads **mock: recognised demo sample file**, and there are no typed-in fields.
    - **Checks tab:** every result is a *Simulated provider response*. The registry comparison matches on name, number, address and directors: the values read off the files agree with what the customer typed.

@@ -1,8 +1,9 @@
 """
-The redesigned operations dashboard: action cards, the "Needs attention" list,
-and two inline-SVG charts - every count adds up to the open cases, every card,
-slice, legend row and bar is a plain link that filters the table, and the page
-needs no script.
+The operations dashboard, light Datadog-style layout: four coloured tiles, a
+charts row (status bars, risk-band donut), the hold strip and the case table.
+Every count adds up and matches the table; every tile, bar, legend row and
+strip block is a plain link that filters; colours come only from the shared
+role variables; tiles meet WCAG AA; light is the default; no script needed.
 
 Run: python -m pytest tests/test_dashboard_redesign.py -q
 """
@@ -24,6 +25,9 @@ from app import data                                                  # noqa: E4
 from orchestrator import db                                           # noqa: E402
 from tools.run_demo import run as run_demo                            # noqa: E402
 from web import render, server as console_server                      # noqa: E402
+
+CSS = (ROOT / "web" / "static" / "app.css").read_text(encoding="utf-8")
+JS = (ROOT / "web" / "static" / "app.js").read_text(encoding="utf-8")
 
 
 @pytest.fixture(scope="module", params=["reset", "full"])
@@ -48,96 +52,184 @@ def follow(conn, href):
     return render.dashboard(conn, parse_qs(urlparse(html.unescape(href)).query))
 
 
-def test_the_counts_add_up_to_the_open_cases(conn):
-    rows = open_rows(conn)
+def nums(page, cls):
+    return [int(v) for v in re.findall(r'class="' + cls + r'(?: num)?">(\d+)<', page)]
+
+
+# ---------------------------------------------------------------------------
+# The counts
+# ---------------------------------------------------------------------------
+
+def test_tiles_bars_donut_and_strip_add_up_to_the_open_cases(conn):
+    live = open_rows(conn)
     page = render.dashboard(conn)
-    cards = [int(v) for v in re.findall(r'class="card__v"><span class="num">(\d+)</span>', page)]
-    ready, white = map(int, re.search(r"(\d+) cases? (?:is|are) ready for a decision</a>"
-                                      r" &middot; <a[^>]*>(\d+) on the white-label", page).groups())
-    assert len(cards) == 3 and sum(cards) + ready + white == len(rows), \
-        "every open case is in exactly one group"
-    donut = [int(v) for v in re.findall(r'legend__v num">(\d+)<', page)]
-    bars = [int(v) for v in re.findall(r'bars__v num">(\d+)<', page)]
-    assert sum(donut) == sum(bars) == len(rows)
-    assert re.search(r'class="donut__n" x="60" y="60">' + str(len(rows)) + "<", page), \
-        "the number of open cases in the centre"
+    tiles = nums(page, "tile__v")
+    white = int(re.search(r"(\d+) on the white-label branch", page).group(1))
+    assert len(tiles) == 4 and sum(tiles) + white == len(live), \
+        "every open case is in exactly one tile, or on the white-label branch"
+    assert sum(nums(page, "hbar__v")) == len(live), "status bars"
+    assert sum(nums(page, "legend__v")) == len(live), "donut legend"
+    assert re.search(r'class="donut__n" x="60" y="60">' + str(len(live)) + "<", page)
+    with_holds, no_holds, restricted = nums(page, "strip__v")
+    assert with_holds + no_holds == len(live)
+    assert restricted == sum(1 for r in live if r["restricted"])
     # and they match the table
-    attention = listed(page)
-    assert sorted(attention) == sorted(r["case_id"] for r in rows if r["alert_at"])
-    assert sum(cards) == len(attention)
+    assert sorted(listed(page)) == sorted(r["case_id"] for r in data.dashboard(conn))
+    assert with_holds == sum(1 for r in live if r["open_holds"])
 
 
-def test_every_card_slice_legend_row_bar_and_count_filters_to_exactly_its_cases(conn):
+def test_every_tile_bar_legend_row_and_strip_block_filters_to_exactly_its_cases(conn):
     rows = {r["case_id"]: r for r in data.dashboard(conn)}
     live = [r for r in rows.values() if r["group"] != "closed"]
     page = render.dashboard(conn)
-    hrefs = set(re.findall(r'href="(/\?[^"]+)"', page))
     checked = 0
-    for href in hrefs:
+    for href in sorted(set(re.findall(r'href="(/\?[^"]+)"', page))):
         q = {k: v[0] for k, v in parse_qs(urlparse(html.unescape(href)).query).items()}
         shown = sorted(listed(follow(conn, href)))
         if q.get("need") == "oldest":
-            oldest = min((r for r in live if r["alert_at"]), key=lambda r: r["alert_at"])
-            expected = [oldest["case_id"]]
+            expected = [min((r for r in live if r["alert_at"]),
+                            key=lambda r: r["alert_at"])["case_id"]]
         elif "need" in q:
             expected = [r["case_id"] for r in live if r["group"] == q["need"]]
         elif "status" in q:
             expected = [c for c, r in rows.items() if r["status"] == q["status"]]
         elif "band" in q:
             expected = [r["case_id"] for r in live if r["band_group"] == q["band"]]
+        elif "holds" in q:
+            expected = [r["case_id"] for r in live
+                        if bool(r["open_holds"]) == (q["holds"] == "with")]
+        elif "restricted" in q:
+            expected = [r["case_id"] for r in live if r["restricted"]]
         else:
-            continue                                   # "Show all", "Clear filter"
+            continue
         assert shown == sorted(expected), (href, shown, expected)
         checked += 1
-    assert checked >= 10, f"only {checked} filter links followed"
+    assert checked >= 14, f"only {checked} filter links followed"
 
 
-def test_the_attention_list_is_oldest_alert_first_with_plain_reasons(conn):
+def test_the_table_keeps_its_columns_is_oldest_first_and_has_plain_words(conn):
     page = render.dashboard(conn)
-    keys = re.findall(r'<td class="cell-alert" data-key="([^"]+)"', page)
-    assert keys == sorted(keys), "oldest alert first"
-    waiting = re.findall(r'<td class="cell-wait-for">([^<]+)', page)
+    head = re.findall(r'<th scope="col"[^>]*>(\w[\w ]*)', page.split('id="cases"')[1])
+    assert head == ["Case", "Status", "Owner", "Band", "Score", "Holds", "Hold detail",
+                    "Alert came in"]
+    keys = [k for k in re.findall(r'<td class="cell-alert" data-key="([^"]+)"', page)]
+    alerted = [k for k in keys if k != "~"]
+    assert alerted == sorted(alerted) and keys[len(alerted):] == ["~"] * (len(keys)
+                                                                          - len(alerted))
+    body = page.split('id="cases"')[1]
+    for status in render.STATUS_WORDS:
+        assert ">" + status + "<" not in body, "status in plain words, not its code"
+    details = re.findall(r'<td class="cell-detail">([^<]+)</td>', body)
     words = set(data.kb().hold_reason_wording.values())
-    assert waiting and all(w.strip() in words for w in waiting), \
-        "every reason is the KB's plain wording, never a hold code"
-    assert data.kb().hold_reason_wording["insufficient_evidence"] == "Missing evidence"
+    for d in details:
+        for part in d.split("; "):
+            reason, owner = re.match(r"(.+) \((\w+)\)$", html.unescape(part)).groups()
+            assert reason in words and owner in ("analyst", "compliance", "customer")
+    # the existing filters are kept
+    for legend in ("Status", "Next action owner", "Follow-up"):
+        assert "<legend>" + legend + "</legend>" in page
 
 
 def test_restricted_cases_keep_their_tag(conn):
     page = render.dashboard(conn)
     for r in data.dashboard(conn):
-        if r["restricted"] and r["alert_at"] and r["group"] != "closed":
-            row = re.search(r'data-href="/case/' + r["case_id"] + r'">.*?</tr>', page,
-                            re.S).group(0)
-            assert 'class="restricted"' in row, r["case_id"]
-    all_view = render.dashboard(conn, {"view": ["all"]})
-    assert all_view.count('class="restricted"') == sum(1 for r in data.dashboard(conn)
-                                                       if r["restricted"])
+        row = re.search(r'data-href="/case/' + r["case_id"] + r'".*?</tr>', page, re.S).group(0)
+        assert ('class="restricted"' in row) == bool(r["restricted"]), r["case_id"]
 
 
-def test_show_all_keeps_the_existing_columns_and_filters(conn):
-    page = render.dashboard(conn, {"view": ["all"]})
-    assert len(listed(page)) == len(data.dashboard(conn))
-    for legend in ("Status", "Next action owner", "Follow-up"):
-        assert "<legend>" + legend + "</legend>" in page
-    for col in ("Type", "Owner", "Score", "Holds", "Hold detail", "Alert came in"):
-        assert ">" + col in page
+# ---------------------------------------------------------------------------
+# Colour, contrast and theme
+# ---------------------------------------------------------------------------
 
+def _block(selector):
+    body = CSS.split(selector + " {", 1)[1]
+    return body.split("\n}", 1)[0]
+
+
+def _var(block, name):
+    return re.search(r"--" + name + r":\s*(#[0-9a-fA-F]{6})", block).group(1)
+
+
+def _lum(hexcolour):
+    def ch(c):
+        c = int(c, 16) / 255
+        return c / 12.92 if c <= 0.03928 else ((c + 0.055) / 1.055) ** 2.4
+    r, g, b = (ch(hexcolour[i:i + 2]) for i in (1, 3, 5))
+    return 0.2126 * r + 0.7152 * g + 0.0722 * b
+
+
+def contrast(a, b):
+    la, lb = sorted((_lum(a), _lum(b)), reverse=True)
+    return (la + 0.05) / (lb + 0.05)
+
+
+@pytest.mark.parametrize("theme", [":root", ':root[data-theme="dark"]'])
+@pytest.mark.parametrize("role", ["analyst", "compliance", "customer", "ready"])
+def test_tile_text_meets_wcag_aa(theme, role):
+    block = _block(theme)
+    ratio = contrast(_var(block, f"tile-{role}-bg"), _var(block, f"tile-{role}-fg"))
+    assert ratio >= 4.5, f"{theme} {role}: {ratio:.2f}"
+
+
+def test_the_colour_language_is_defined_once_for_both_themes():
+    light, dark = _block(":root"), _block(':root[data-theme="dark"]')
+    for role in ("analyst", "compliance", "customer", "ready", "neutral"):
+        for part in ("", "-bg", "-line"):
+            assert re.search(r"--role-" + role + part + r":\s*#", light), (role, part)
+            assert re.search(r"--role-" + role + part + r":\s*#", dark), (role, part)
+    # the badge tones are those same roles, not a second palette
+    for tone, role in (("warn", "analyst"), ("bad", "compliance"), ("info", "customer"),
+                       ("ok", "ready")):
+        assert f"--{tone}:var(--role-{role})" in light
+    assert render.OWNER_TONE == {"analyst": "warn", "compliance": "bad", "customer": "info",
+                                 "system": "neutral"}
+    assert render.BAND_TONE["critical"] == "bad" and render.BAND_TONE["low"] == "ok"
+
+
+def test_the_dashboard_uses_only_the_shared_colour_variables(conn):
+    page = render.dashboard(conn)
+    assert not re.search(r"#[0-9a-fA-F]{3,6}\b", page), "no colour codes in the markup"
+    for style in re.findall(r'style="([^"]+)"', page):
+        for value in re.findall(r"(?:background|stroke|border-top-color|color):([^;]+)",
+                                style):
+            assert value.strip().startswith("var(--role-"), style
+    dash_css = CSS.split("/* ---------- Operations dashboard")[1].split(
+        "/* The case timeline")[0]
+    assert not re.search(r"#[0-9a-fA-F]{3,6}\b", dash_css), "dashboard CSS uses variables only"
+
+
+def test_light_is_the_default_and_dark_still_works():
+    assert "prefers-color-scheme" not in CSS, "the operating system does not pick the theme"
+    assert "color-scheme: light;" in _block(":root")
+    assert "color-scheme: dark;" in _block(':root[data-theme="dark"]')
+    assert "matchMedia" not in JS and '"dark" ? "light" : "dark"' in JS
+    page = render.page("x", "", "Operations dashboard", conn=None)
+    assert 'id="theme"' in page and 'data-theme="dark"' not in page
+
+
+# ---------------------------------------------------------------------------
+# Without a script, and served
+# ---------------------------------------------------------------------------
 
 def test_the_page_works_without_javascript(conn):
     page = render.page("Operations dashboard", render.dashboard(conn), "Operations dashboard",
                        conn=conn)
     main = page.split('<main class="main">')[1].split("</main>")[0]
-    assert "<script" not in main and not re.search(r"\son[a-z]+=", main), \
-        "no script in the dashboard itself"
-    assert "<svg" in main and '<a href="/?view=all&amp;status=' in main, \
-        "the chart slices are plain links"
-    assert '<a class="card" href="/?need=analyst">' in main, "so are the cards"
-    # the filters work from the address alone, which is what a browser with
-    # scripts off sends when a link is followed
-    assert listed(render.dashboard(conn, {"need": ["customer"]})) == \
-        [r["case_id"] for r in sorted(open_rows(conn), key=lambda r: r["alert_at"])
-         if r["group"] == "customer"]
+    assert "<script" not in main and not re.search(r"\son[a-z]+=", main)
+    assert '<a class="tile tile--analyst" href="/?need=analyst">' in main
+    assert '<svg class="donut"' in main and '<a href="/?band=' in main
+    assert '<a class="strip__block" href="/?holds=with"' in main
+    # the address alone filters: what a browser sends when a link is followed
+    assert sorted(listed(render.dashboard(conn, {"need": ["customer"]}))) == \
+        sorted(r["case_id"] for r in open_rows(conn) if r["group"] == "customer")
+
+
+def test_the_header_shows_the_demo_clock_and_the_oldest_alert(conn):
+    page = render.dashboard(conn)
+    live = [r for r in open_rows(conn) if r["alert_at"]]
+    oldest = min(live, key=lambda r: r["alert_at"])
+    assert "Demo clock - not real time: " in page
+    assert "Oldest alert: " + data.ago(oldest["alert_at"]) in page
 
 
 def test_the_server_serves_every_view(tmp_path):
@@ -149,12 +241,13 @@ def test_the_server_serves_every_view(tmp_path):
     threading.Thread(target=httpd.serve_forever, daemon=True).start()
     base = f"http://127.0.0.1:{httpd.server_address[1]}"
     try:
-        for p in ("/", "/?need=analyst", "/?need=oldest", "/?view=all",
-                  "/?view=all&status=analyst_review_required", "/?view=all&band=not+scored"):
+        for p in ("/", "/?need=analyst", "/?need=oldest", "/?need=ready", "/?holds=none",
+                  "/?restricted=1", "/?status=analyst_review_required", "/?band=not+scored",
+                  "/?view=all"):
             with urllib.request.urlopen(base + p) as r:
                 assert r.status == 200, p
                 text = r.read().decode()
-            assert "Operations dashboard" in text and "Cases by status" in text, p
+            assert "Cases by status" in text and "Hold status" in text, p
         with urllib.request.urlopen(base + "/?need=analyst") as r:
             assert "Showing: <strong>Needs analyst</strong>" in r.read().decode()
     finally:

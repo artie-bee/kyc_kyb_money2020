@@ -47,17 +47,31 @@ TAB_LABELS = {MESSAGES_TAB: "Decision & messages"}
 TAB_ALIASES = {"Decision": (MESSAGES_TAB, "decision"),
                "Communications": (MESSAGES_TAB, "messages")}
 
+# The colour language, one meaning everywhere (web/static/app.css, --role-*):
+# warn = amber = analyst, bad = red = compliance / critical, info = blue =
+# customer, ok = green = ready / low, neutral = grey = not scored / system.
 STATUS_TONE = {
-    "submitted": "neutral", "document_quality_review": "info",
-    "resubmission_required": "warn", "verification_in_progress": "info",
+    "submitted": "neutral", "document_quality_review": "neutral",
+    "resubmission_required": "info", "verification_in_progress": "neutral",
     "analyst_review_required": "warn", "enhanced_due_diligence": "warn",
-    "ready_for_decision": "info", "approved": "ok", "rejected": "bad",
+    "ready_for_decision": "ok", "approved": "ok", "rejected": "bad",
     "closed_withdrawn": "neutral",
 }
-BAND_TONE = {"low": "ok", "medium": "info", "high": "warn", "critical": "bad",
-             "insufficient_evidence": "warn"}
-OWNER_TONE = {"analyst": "info", "compliance": "bad", "customer": "warn",
+BAND_TONE = {"low": "ok", "medium": "warn", "high": "warn", "critical": "bad",
+             "insufficient_evidence": "neutral"}
+OWNER_TONE = {"analyst": "warn", "compliance": "bad", "customer": "info",
               "system": "neutral"}
+ROLE_OF_TONE = {"warn": "analyst", "bad": "compliance", "info": "customer", "ok": "ready",
+                "neutral": "neutral"}
+# What each status is called on the dashboard, in plain words.
+STATUS_WORDS = {
+    "submitted": "Submitted", "document_quality_review": "Checking documents",
+    "resubmission_required": "Waiting for documents",
+    "verification_in_progress": "Verification running",
+    "analyst_review_required": "Analyst review", "enhanced_due_diligence": "Enhanced due diligence",
+    "ready_for_decision": "Ready for decision", "approved": "Approved", "rejected": "Rejected",
+    "closed_withdrawn": "Closed - withdrawn",
+}
 RESULT_TONE = {"match": "ok", "pass": "ok", "no_match": "ok", "none": "ok",
                "verified": "ok", "true": "ok",
                "mismatch": "bad", "fail": "bad", "clear_match": "bad",
@@ -284,26 +298,34 @@ def _alert_cell(stamp) -> str:
             ' <span class="muted nowrap">&middot; ' + e(data.ago(stamp)) + "</span></td>")
 
 
-TONE_VAR = {"ok": "--ok", "info": "--info", "warn": "--warn", "bad": "--bad",
-            "neutral": "--n-5"}
-DASH_BAND_TONE = {"critical": "bad", "high": "warn", "medium": "info", "low": "ok",
-                  "not scored": "neutral"}
-# What each dashboard filter is called when it is in force.
+def role_var(tone: str, part: str = "") -> str:
+    """The shared colour for a tone, as a CSS variable: var(--role-analyst)."""
+    return "var(--role-" + ROLE_OF_TONE.get(tone, "neutral") + part + ")"
+
+
+# Risk bands on the donut, in order, with their colour. Medium is the lighter
+# amber: still the analyst's, one step down from high.
+BAND_COLOUR = {"critical": "var(--role-compliance)", "high": "var(--role-analyst)",
+               "medium": "var(--role-analyst-2)", "low": "var(--role-ready)",
+               "not scored": "var(--role-neutral)"}
+TILES = (("analyst", "Needs analyst", "cases held for an analyst"),
+         ("compliance", "Needs compliance", "cases held for compliance"),
+         ("customer", "Waiting on customer", "cases held for the customer"),
+         ("ready", "Ready for decision", "nothing held; a person decides"))
 NEED_LABEL = {"analyst": "Needs analyst", "compliance": "Needs compliance",
-              "customer": "Waiting on customer", "ready": "Ready for a decision",
+              "customer": "Waiting on customer", "ready": "Ready for decision",
               "white_label": "White-label branch", "oldest": "Oldest alert"}
-FILTER_KEYS = ("need", "status", "band", "owner", "waiting")
 
 
 def _dash_filter(rows, q):
     """The rows a dashboard address asks for, and a plain label for it. Every
-    card, slice, bar and footer count is a link to one of these, so the page
+    tile, bar, legend row and strip block links to one of these, so the page
     filters with scripts off."""
     out, said = list(rows), []
+    live = lambda r: r["group"] != "closed"                         # noqa: E731
     need = q.get("need")
     if need == "oldest":
-        alerts = sorted((r for r in out if r["group"] != "closed" and r["alert_at"]),
-                        key=lambda r: r["alert_at"])
+        alerts = sorted((r for r in out if live(r) and r["alert_at"]), key=lambda r: r["alert_at"])
         out = alerts[:1]
     elif need in data.ATTENTION_GROUPS:
         out = [r for r in out if r["group"] == need]
@@ -311,10 +333,16 @@ def _dash_filter(rows, q):
         said.append(NEED_LABEL[need])
     if q.get("status"):
         out = [r for r in out if r["status"] == q["status"]]
-        said.append("status " + q["status"])
+        said.append(STATUS_WORDS.get(q["status"], q["status"]))
     if q.get("band") in data.BAND_GROUPS:
-        out = [r for r in out if r["group"] != "closed" and r["band_group"] == q["band"]]
+        out = [r for r in out if live(r) and r["band_group"] == q["band"]]
         said.append("band " + q["band"])
+    if q.get("holds") in ("with", "none"):
+        out = [r for r in out if live(r) and bool(r["open_holds"]) == (q["holds"] == "with")]
+        said.append("with holds" if q["holds"] == "with" else "no holds")
+    if q.get("restricted") == "1":
+        out = [r for r in out if live(r) and r["restricted"]]
+        said.append("restricted")
     if q.get("owner"):
         out = [r for r in out if r["owner"] == q["owner"]]
         said.append("owner " + q["owner"])
@@ -325,187 +353,172 @@ def _dash_filter(rows, q):
 
 
 def _case_cell(r) -> str:
-    """Applicant in bold; the case id, restricted tag and owner (if not an
-    analyst) underneath."""
+    """Applicant in bold; the case id and RESTRICTED tag underneath."""
     flag = ('<span class="restricted" title="Customer messages are limited to generic '
             'templates">restricted</span>') if r["restricted"] else ""
-    owner = (" " + chip(r["owner"], OWNER_TONE)) if r["owner"] and r["owner"] != "analyst" \
-        else ""
     return ('<td class="cell-case"><a class="cell-case__name" href="/case/' + e(r["case_id"])
             + '">' + e(r["applicant"]) + "</a>"
-            '<span class="cell-case__sub">' + idtag(r["case_id"]) + flag + owner
-            + "</span></td>")
+            '<span class="cell-case__sub">' + idtag(r["case_id"]) + flag + "</span></td>")
 
 
-def _attention_table(rows) -> str:
-    body = []
-    for r in sorted(rows, key=lambda r: r["alert_at"]):
-        more = (' <span class="muted">+' + str(r["more_holds"]) + " more</span>"
-                if r["more_holds"] else "")
-        band = (chip(r["risk_band"], BAND_TONE) if r["risk_band"]
-                else '<span class="muted">not scored</span>')
-        body.append('<tr class="rowlink" data-href="/case/' + e(r["case_id"]) + '">'
-                    + _case_cell(r)
-                    + '<td class="cell-wait-for">' + e(r["waiting_for"]) + more + "</td>"
-                    + "<td>" + band + "</td>" + _alert_cell(r["alert_at"]) + "</tr>")
-    if not body:
-        return '<div class="tablewrap"><p class="empty">Nothing needs attention here.</p></div>'
-    return ('<div class="tablewrap"><table id="attention"><thead><tr>'
-            '<th scope="col">Case</th>'
-            '<th scope="col">Waiting for'
-            + help_mark("The hold that owns the case, in plain words from "
-                        "kb/hold_reason_wording.csv.") + "</th>"
-            '<th scope="col">Band</th>'
-            '<th scope="col">Alert'
-            + help_mark("When the current alert came in, and how long ago on the demo "
-                        "clock. Oldest first.", edge=True) + "</th>"
-            "</tr></thead><tbody>" + "".join(body) + "</tbody></table></div>")
-
-
-def _all_table(rows, all_rows) -> str:
-    """Every case, with the existing columns and the status / owner / follow-up
-    filters (the script narrows the rows further as boxes are ticked)."""
+def _case_table(rows, all_rows) -> str:
+    """Every case (or the filtered ones), oldest alert first, with the status /
+    owner / follow-up filters the script narrows further as boxes are ticked."""
     statuses = sorted({r["status"] for r in all_rows})
     owners = sorted({r["owner"] for r in all_rows if r["owner"]})
     body = []
-    for r in rows:
-        flag = ('<span class="restricted" title="Customer messages are limited '
-                'to generic templates">restricted</span>') if r["restricted"] else ""
-        band = chip(r["risk_band"], BAND_TONE) if r["risk_band"] \
-            else em_dash("not scored yet")
-        score = cell(r["risk_score"], "not scored yet")
+    for r in sorted(rows, key=lambda r: (not r["alert_at"], r["alert_at"], r["case_id"])):
+        band = (chip(r["risk_band"].replace("_", " "), tone=BAND_TONE.get(r["risk_band"]))
+                if r["risk_band"] else '<span class="muted">not scored</span>')
         holds = ('<span class="count">' + str(r["open_holds"]) + "</span>") \
             if r["open_holds"] else '<span class="muted">0</span>'
-        detail = ('<span class="detail" title="' + e(r["hold_detail"]) + '">'
-                  + cell(r["hold_detail"]) + "</span>")
         body.append(
             '<tr class="rowlink" data-href="/case/' + e(r["case_id"]) + '"'
             ' data-status="' + e(r["status"]) + '"'
             ' data-waiting="' + ("1" if r["waiting"] else "0") + '"'
             ' data-owner="' + e(r["owner"]) + '">'
-            '<td class="cell-id"><a href="/case/' + e(r["case_id"]) + '">'
-            + idtag(r["case_id"]) + "</a>" + flag + "</td>"
-            '<td class="cell-name">' + e(r["applicant"]) + "</td>"
-            '<td class="cell-type"><span class="type">' + e(r["applicant_type"]) + "</span></td>"
-            "<td>" + chip(r["status"], STATUS_TONE) + "</td>"
-            "<td>" + chip(r["owner"], OWNER_TONE) + "</td>"
-            "<td>" + band + "</td>"
-            '<td class="ta-r">' + score + "</td>"
-            '<td class="ta-r">' + holds + "</td>"
-            '<td class="cell-detail">' + detail + "</td>"
-            + _alert_cell(r["alert_at"]) +
-            "</tr>")
+            + _case_cell(r)
+            + "<td>" + chip(STATUS_WORDS.get(r["status"], r["status"]),
+                            tone=STATUS_TONE.get(r["status"], "neutral")) + "</td>"
+            + "<td>" + chip(r["owner"], OWNER_TONE) + "</td>"
+            + "<td>" + band + "</td>"
+            + '<td class="ta-r">' + cell(r["risk_score"], "not scored yet") + "</td>"
+            + '<td class="ta-r">' + holds + "</td>"
+            + '<td class="cell-detail">' + cell(r["hold_plain"]) + "</td>"
+            + _alert_cell(r["alert_at"]) + "</tr>")
 
-    def boxes(name, values):
+    def boxes(name, values, words=None):
         return "".join(
             '<label class="opt"><input type="checkbox" name="' + name + '" value="'
-            + e(v) + '" checked><span>' + e(v) + "</span></label>" for v in values)
+            + e(v) + '" checked><span>' + e((words or {}).get(v, v)) + "</span></label>"
+            for v in values)
 
     head = ('<th scope="col" data-sort="text">Case</th>'
-            '<th scope="col" data-sort="text">Applicant</th>'
-            '<th scope="col" data-sort="text">Type</th>'
             '<th scope="col" data-sort="text">Status</th>'
             '<th scope="col" data-sort="text">Owner</th>'
             '<th scope="col" data-sort="text">Band</th>'
             '<th scope="col" data-sort="num" class="ta-r">Score</th>'
             '<th scope="col" data-sort="num" class="ta-r">Holds</th>'
-            '<th scope="col">Hold detail</th>'
+            '<th scope="col">Hold detail'
+            + help_mark("Each open hold in plain words (kb/hold_reason_wording.csv), with who "
+                        "it is for in brackets.") + "</th>"
             '<th scope="col" data-sort="text">Alert came in'
             + help_mark("When the case's current alert - its most recent open hold - was "
-                        "placed, and how long ago on the demo clock. A dash when nothing is "
-                        "open. Sorts oldest first.", edge=True) + "</th>")
+                        "placed, and how long ago on the demo clock. Oldest first.",
+                        edge=True) + "</th>")
     waiting = sum(1 for r in all_rows if r["waiting"])
     n = len(rows)
     return (
+        '<details class="filters-fold"><summary>Filters</summary>'
         '<section class="filters">'
         "<fieldset><legend>Status</legend>"
-        '<div class="opts">' + boxes("status", statuses) + "</div></fieldset>"
+        '<div class="opts">' + boxes("status", statuses, STATUS_WORDS) + "</div></fieldset>"
         "<fieldset><legend>Next action owner</legend>"
         '<div class="opts">' + boxes("owner", owners) + "</div></fieldset>"
         "<fieldset><legend>Follow-up</legend>"
         '<div class="opts"><label class="opt"><input type="checkbox" name="waiting" '
         'value="1"><span>Waiting on customer (' + str(waiting) + ")</span></label></div>"
-        "</fieldset>"
-        "</section>"
+        "</fieldset></section></details>"
         '<p class="count-line"><span id="shown">' + str(n) + "</span> of "
-        + str(n) + " cases</p>"
+        + str(n) + " cases &middot; oldest alert first</p>"
         '<div class="tablewrap"><table id="cases"><thead><tr>' + head
         + "</tr></thead><tbody>" + "".join(body) + "</tbody></table>"
         '<p class="empty" id="empty"' + ("" if not rows else " hidden")
-        + ">No case matches these filters.</p></div>"
-        + '<p class="foot">A dash in Band or Score means the case has not reached '
-          "risk scoring &mdash; it is not a score of zero.</p>")
+        + ">No case matches these filters.</p></div>")
 
 
-def _donut(open_rows) -> str:
-    """Open cases by status: an inline SVG ring, the total in the middle, and a
-    legend giving every status its count - the colour is never the only cue.
-    Each slice and legend row links to the table filtered to that status."""
+def _status_bars(open_rows) -> str:
+    """Open cases by status: horizontal bars, each with its count and a link to
+    the table filtered to that status. Colour follows the status's role."""
     order = [s for s in STATUS_TONE if s not in CLOSED]
     counts = {s: sum(1 for r in open_rows if r["status"] == s) for s in order}
+    top = max(counts.values()) or 1
+    items = []
+    for s in order:
+        v = counts[s]
+        bar = ('<span class="hbar__k">' + e(STATUS_WORDS[s]) + "</span>"
+               '<span class="hbar__track"><span class="hbar__bar" style="width:'
+               + f"{100 * v / top:.0f}" + "%;background:" + role_var(STATUS_TONE[s])
+               + '"></span></span><span class="hbar__v num">' + str(v) + "</span>")
+        items.append("<li>" + ('<a href="/?status=' + e(s) + '">' + bar + "</a>" if v
+                               else '<span class="hbar__zero">' + bar + "</span>") + "</li>")
+    return ('<section class="panel2"><h2 class="panel2__h">Cases by status</h2>'
+            '<ul class="hbars">' + "".join(items) + "</ul></section>")
+
+
+def _band_donut(open_rows) -> str:
+    """Open cases by risk band: an inline SVG ring with the total in the centre
+    and a legend giving every band its count - colour is never the only cue.
+    Slices and legend rows link to the table filtered to that band."""
+    counts = {b: sum(1 for r in open_rows if r["band_group"] == b) for b in data.BAND_GROUPS}
     total = sum(counts.values())
-    r, cx = 42, 60
+    r = 42
     circ = 2 * 3.141592653589793 * r
     gap = 1.6 if sum(1 for v in counts.values() if v) > 1 else 0
     slices, offset = [], 0.0
-    for s in order:
-        v = counts[s]
+    for b in data.BAND_GROUPS:
+        v = counts[b]
         if not v:
             continue
         length = circ * v / total
-        colour = "var(" + TONE_VAR[STATUS_TONE[s]] + ")"
+        href = "/?band=" + b.replace(" ", "+")
         slices.append(
-            '<a href="/?view=all&amp;status=' + e(s) + '" aria-label="' + e(s) + ": " + str(v)
-            + '"><circle class="donut__slice" cx="' + str(cx) + '" cy="' + str(cx)
-            + '" r="' + str(r) + '" style="stroke:' + colour + '" stroke-dasharray="'
+            '<a href="' + e(href) + '" aria-label="' + e(b) + ": " + str(v) + '">'
+            '<circle class="donut__slice" cx="60" cy="60" r="42" style="stroke:'
+            + BAND_COLOUR[b] + '" stroke-dasharray="'
             + f"{max(length - gap, 0.1):.2f} {circ - length + gap:.2f}"
-            + '" stroke-dashoffset="' + f"{-offset:.2f}" + '"><title>' + e(s) + ": " + str(v)
+            + '" stroke-dashoffset="' + f"{-offset:.2f}" + '"><title>' + e(b) + ": " + str(v)
             + "</title></circle></a>")
         offset += length
     svg = ('<svg class="donut" viewBox="0 0 120 120" role="img" aria-label="'
-           + str(total) + ' open cases by status">'
+           + str(total) + ' open cases by risk band">'
            '<circle class="donut__track" cx="60" cy="60" r="42"/>'
            '<g transform="rotate(-90 60 60)">' + "".join(slices) + "</g>"
            '<text class="donut__n" x="60" y="60">' + str(total) + "</text>"
            '<text class="donut__k" x="60" y="76">open</text></svg>')
     legend = []
-    for s in order:
-        v = counts[s]
-        sw = '<span class="legend__sw" style="background:var(' + TONE_VAR[STATUS_TONE[s]] \
-            + ')"></span>'
-        label = sw + '<span class="legend__k">' + e(s.replace("_", " ")) + "</span>" \
-            '<span class="legend__v num">' + str(v) + "</span>"
-        legend.append('<li>' + ('<a href="/?view=all&amp;status=' + e(s) + '">' + label + "</a>"
-                                if v else '<span class="legend__zero">' + label + "</span>")
-                      + "</li>")
-    return ('<section class="side__block"><h2 class="side__h">Cases by status</h2>' + svg
-            + '<ul class="legend">' + "".join(legend) + "</ul></section>")
-
-
-def _band_bars(open_rows) -> str:
-    """Open cases by risk band, as horizontal bars with counts; each links to the
-    table filtered to that band."""
-    counts = {b: sum(1 for r in open_rows if r["band_group"] == b) for b in data.BAND_GROUPS}
-    top = max(counts.values()) or 1
-    rows = []
     for b in data.BAND_GROUPS:
         v = counts[b]
-        width = f"{100 * v / top:.0f}"
-        rows.append('<li><a href="/?view=all&amp;band=' + e(b.replace(" ", "+")) + '">'
-                    '<span class="bars__k">' + e(b) + "</span>"
-                    '<span class="bars__track"><span class="bars__bar" style="width:' + width
-                    + "%;background:var(" + TONE_VAR[DASH_BAND_TONE[b]] + ')"></span></span>'
-                    '<span class="bars__v num">' + str(v) + "</span></a></li>")
-    return ('<section class="side__block"><h2 class="side__h">Risk bands</h2>'
-            '<ul class="bars">' + "".join(rows) + "</ul>"
-            '<p class="side__foot">Not scored includes cases scored as insufficient '
+        label = ('<span class="legend__sw" style="background:' + BAND_COLOUR[b] + '"></span>'
+                 '<span class="legend__k">' + e(b) + "</span>"
+                 '<span class="legend__v num">' + str(v) + "</span>")
+        legend.append("<li>" + ('<a href="/?band=' + e(b.replace(" ", "+")) + '">' + label
+                                + "</a>" if v else '<span class="legend__zero">' + label
+                                + "</span>") + "</li>")
+    return ('<section class="panel2"><h2 class="panel2__h">Risk bands</h2>'
+            '<div class="donutwrap">' + svg + '<ul class="legend">' + "".join(legend)
+            + "</ul></div>"
+            '<p class="panel2__foot">Not scored includes cases scored as insufficient '
             "evidence.</p></section>")
 
 
+def _hold_strip(open_rows) -> str:
+    """With holds · No holds · Restricted, each block as wide as its share and
+    showing its count; each links to the table filtered that way."""
+    blocks = (("With holds", "/?holds=with", sum(1 for r in open_rows if r["open_holds"]),
+               "var(--role-analyst)"),
+              ("No holds", "/?holds=none", sum(1 for r in open_rows if not r["open_holds"]),
+               "var(--role-ready)"),
+              ("Restricted", "/?restricted=1", sum(1 for r in open_rows if r["restricted"]),
+               "var(--role-compliance)"))
+    total = sum(b[2] for b in blocks) or 1
+    parts = "".join(
+        '<a class="strip__block" href="' + href + '" style="flex-grow:' + str(max(n, 0))
+        + ";border-top-color:" + colour + '"'
+        + (' aria-disabled="true"' if not n else "") + ">"
+        '<span class="strip__k">' + e(label) + '</span><span class="strip__v num">' + str(n)
+        + "</span></a>" for label, href, n, colour in blocks)
+    return ('<section class="panel2 strip" aria-label="Hold status">'
+            '<h2 class="panel2__h">Hold status</h2><div class="strip__row">' + parts
+            + '</div><p class="panel2__foot">Open cases. Restricted counts cases with a '
+            "restricted finding, held or not. " + str(total) + " in all.</p></section>")
+
+
 def dashboard(conn, query=None, **kw) -> str:
-    """Operations dashboard: four action cards, the cases that need attention
-    (oldest alert first), and two charts. Everything filters through the
-    address (?need=, ?status=, ?band=, ?view=all), so it works with scripts off."""
+    """Operations dashboard, light by default: four coloured tiles, a charts
+    row, the hold strip, and every case underneath, oldest alert first.
+    Everything filters through the address (?need=, ?status=, ?band=, ?holds=,
+    ?restricted=), so it works with scripts off."""
     q = {k: (v[0] if isinstance(v, list) else v) for k, v in (query or {}).items()}
     rows = data.dashboard(conn)
     open_rows = [r for r in rows if r["group"] != "closed"]
@@ -513,58 +526,36 @@ def dashboard(conn, query=None, **kw) -> str:
     alerts = sorted((r for r in open_rows if r["alert_at"]), key=lambda r: r["alert_at"])
     oldest = alerts[0] if alerts else None
 
-    def card(key, label, value, sub):
-        on = " card--on" if q.get("need") == key else ""
-        return ('<a class="card' + on + '" href="/?need=' + key + '">'
-                '<span class="card__k">' + e(label) + "</span>"
-                '<span class="card__v">' + value + "</span>"
-                '<span class="card__sub">' + sub + "</span></a>")
+    tiles = "".join(
+        '<a class="tile tile--' + key + (" tile--on" if q.get("need") == key else "")
+        + '" href="/?need=' + key + '"><span class="tile__v num">' + str(by_group[key])
+        + '</span><span class="tile__k">' + e(label) + '</span><span class="tile__sub">'
+        + e(sub) + "</span></a>" for key, label, sub in TILES)
+    extra = ('<p class="tiles__note"><a href="/?need=white_label">'
+             + str(by_group["white_label"]) + " on the white-label branch</a>, not counted "
+             "above. " + str(len(open_rows)) + " open of " + str(len(rows)) + " cases.</p>")
 
-    cards = ('<section class="cards">'
-             + card("analyst", "Needs analyst", '<span class="num">' + str(by_group["analyst"])
-                    + "</span>", "cases held for an analyst")
-             + card("compliance", "Needs compliance",
-                    '<span class="num">' + str(by_group["compliance"]) + "</span>",
-                    "cases held for compliance")
-             + card("customer", "Waiting on customer",
-                    '<span class="num">' + str(by_group["customer"]) + "</span>",
-                    "cases held for the customer")
-             + card("oldest", "Oldest alert",
-                    e(data.ago(oldest["alert_at"]).replace(" ago", "")) if oldest else NO_ALERT,
-                    (e(oldest["applicant"]) + " &middot; " + e(oldest["case_id"])) if oldest
-                    else "no open alert")
-             + "</section>")
+    clock_bit = ('<span class="dhead__clock">' + e(data.DEMO_CLOCK_LABEL) + ": "
+                 + e(data.today()) + " UTC</span>" if data.demo_clock_enabled() else "")
+    oldest_bit = ('<a class="dhead__oldest" href="/?need=oldest">Oldest alert: '
+                  + e(data.ago(oldest["alert_at"])) + "</a>" if oldest
+                  else '<span class="dhead__oldest">No open alert</span>')
 
-    show_all = q.get("view") == "all" or any(q.get(k) for k in ("status", "band", "owner",
-                                                                "waiting"))
-    shown, said = _dash_filter(rows if show_all else alerts, q)
+    shown, said = _dash_filter(rows, q)
     active = ('<p class="filterline">Showing: <strong>' + e(said) + "</strong> &middot; "
-              '<a href="' + ("/?view=all" if show_all else "/") + '">Clear filter</a></p>'
-              if said else "")
-    if show_all:
-        main = ('<div class="dash__head"><h2>All cases</h2>'
-                '<a href="/">Back to needs attention</a></div>' + active
-                + _all_table(shown, rows))
-    else:
-        main = ('<div class="dash__head"><h2>Needs attention</h2>'
-                '<a href="/?view=all">Show all</a></div>' + active
-                + _attention_table(shown))
-    footer = ('<p class="dash__foot"><a href="/?view=all&amp;need=ready">'
-              + str(by_group["ready"]) + " case" + ("" if by_group["ready"] == 1 else "s")
-              + " " + ("is" if by_group["ready"] == 1 else "are")
-              + ' ready for a decision</a> &middot; <a href="/?view=all&amp;need=white_label">'
-              + str(by_group["white_label"]) + " on the white-label branch</a></p>")
+              '<a href="/">Clear filter</a></p>' if said else "")
     return (
-        '<header class="page"><h1>Operations dashboard</h1>'
-        '<p class="sub">What needs someone now, and where every open case stands. '
-        + str(len(open_rows)) + " open of " + str(len(rows)) + " cases.</p></header>"
-        + cards
-        + '<div class="dash"><div class="dash__main">' + main + footer + "</div>"
-        '<aside class="side" aria-label="Charts">' + _donut(open_rows) + _band_bars(open_rows)
-        + "</aside></div>"
-        + note("A case carrying a restricted finding gets generic customer wording only. "
-               "The finding itself is never shown to the applicant.", "info",
-               "Restricted findings"))
+        '<header class="page dhead"><div><h1>Operations dashboard</h1>'
+        '<p class="sub">Who has work now, and where every open case stands.</p></div>'
+        '<div class="dhead__meta">' + clock_bit + oldest_bit + "</div></header>"
+        '<section class="tiles">' + tiles + "</section>" + extra
+        + '<div class="charts">' + _status_bars(open_rows) + _band_donut(open_rows) + "</div>"
+        + _hold_strip(open_rows)
+        + '<h2 class="table__h" id="cases-table">Cases</h2>' + active
+        + _case_table(shown, rows)
+        + '<p class="foot">A dash in Score means the case has not reached risk scoring '
+          "&mdash; it is not a score of zero. A restricted case gets generic customer wording "
+          "only; the finding itself is never shown to the applicant.</p>")
 
 
 # ---------------------------------------------------------------------------

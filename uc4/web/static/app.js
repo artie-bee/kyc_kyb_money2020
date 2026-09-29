@@ -16,10 +16,9 @@
   var themeBtn = document.getElementById("theme");
   if (themeBtn) themeBtn.addEventListener("click", function () {
     var root = document.documentElement;
-    var now = root.getAttribute("data-theme");
-    var dark = now === "dark" ||
-      (now !== "light" && window.matchMedia("(prefers-color-scheme: dark)").matches);
-    var next = dark ? "light" : "dark";
+    // Light unless someone chose dark: the operating system's preference is
+    // not followed, so everyone starts on the same, light console.
+    var next = root.getAttribute("data-theme") === "dark" ? "light" : "dark";
     root.setAttribute("data-theme", next);
     try { localStorage.setItem(KEY, next); } catch (e) { /* nothing to do */ }
   });

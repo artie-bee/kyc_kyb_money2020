@@ -245,6 +245,9 @@ def _attention(case, open_now, risk) -> dict:
         "group": group,
         # the hold that owns the case, in plain words (kb/hold_reason_wording.csv)
         "waiting_for": kb().hold_reason_wording.get(worst.code, worst.code) if worst else "",
+        # every open hold, in plain words with its owner: "Missing evidence (customer)"
+        "hold_plain": "; ".join(kb().hold_reason_wording.get(h.code, h.code) + " (" + h.owner
+                                + ")" for h in open_now),
         "more_holds": max(0, len(open_now) - 1),
         # an unscored case, and one scored "insufficient evidence", have no number
         "band_group": band if band in BAND_GROUPS else "not scored",
