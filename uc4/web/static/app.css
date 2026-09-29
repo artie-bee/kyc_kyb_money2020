@@ -381,6 +381,7 @@ textarea { min-height:64px; resize:vertical; }
 .btn--primary:hover { filter:brightness(1.08); }
 .btn--bad { color:var(--bad); border-color:var(--bad-line); background:var(--bad-bg); }
 .btn--wide { width:100%; }
+.deleteform { display:flex; flex-wrap:wrap; gap:8px 14px; align-items:center; }
 .btn-row { display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
 
 .panel { border:1px solid var(--line); border-radius:var(--r);

@@ -19,8 +19,8 @@ from pathlib import Path
 UC4 = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(UC4))
 
-from orchestrator import (clock, db, demo_scenarios, holds, live_mode,    # noqa: E402
-                          live_reading, portal_access)
+from orchestrator import (clock, db, demo_cases, demo_scenarios, holds,    # noqa: E402
+                          live_mode, live_reading, portal_access)
 from orchestrator.kb import KnowledgeBase                                  # noqa: E402
 from orchestrator.quality_checker import get_upload_checker                # noqa: E402
 from orchestrator import settings                                          # noqa: E402
@@ -102,6 +102,38 @@ def _load_floors(path: Path) -> dict:
 
 def _merge(a: dict, b: dict) -> dict:
     return {k: max(a.get(k, 0), b.get(k, 0)) for k in {*a, *b}}
+
+
+def _db_file(conn) -> Path | None:
+    """The file behind a connection, or None for an in-memory database."""
+    name = next((r[2] for r in conn.execute("PRAGMA database_list") if r[1] == "main"), "")
+    return Path(name) if name else None
+
+
+def delete_demo_case(conn, case_id: str, who: str) -> dict:
+    """Delete one WAL-DEMO- case, in a demo build: its rows (orchestrator/
+    demo_cases.py - scripted WAL-ONB- cases are refused there), its uploaded
+    files and saved application, and one line in the demo deletion log beside
+    the database (who, when, which id). Its ids are never issued again."""
+    if not settings.DEMO_BUILD:
+        raise PermissionError("demo cases can be deleted only in a demo build")
+    if not (who or "").strip():
+        raise ValueError("a deletion needs a named person")
+    result = demo_cases.delete(conn, case_id)
+    folder = UPLOADS / case_id
+    if folder.is_dir():
+        for f in folder.iterdir():
+            if f.is_file():
+                f.unlink()
+        folder.rmdir()
+    (PORTAL_APPLICATIONS / f"{case_id}.json").unlink(missing_ok=True)
+    where = _db_file(conn)
+    if where is not None:
+        save_floors(conn, where)
+        with open(where.parent / "demo_deletions.log", "a", encoding="utf-8") as log:
+            log.write(f"{clock.stamp()}\t{who}\tdeleted {case_id} "
+                      f"({result['applicant']}); {result['rows']} row(s)\n")
+    return result
 
 
 def save_floors(conn, path: Path) -> None:

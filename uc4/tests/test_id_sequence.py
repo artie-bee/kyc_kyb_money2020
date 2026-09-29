@@ -46,6 +46,19 @@ def all_ids(conn) -> set:
     return out
 
 
+def test_create_delete_create_gives_the_next_number_not_the_old_one(demo):
+    conn = demo["conn"]
+    first = apply_as_new_customer(conn)
+    assert first == "WAL-DEMO-0001"
+    issued = all_ids(conn)
+    data.delete_demo_case(conn, first, "analyst.test")
+    second = apply_as_new_customer(conn)
+    assert second == "WAL-DEMO-0002", "WAL-DEMO-0001 is never issued again"
+    gone = issued - all_ids(conn)
+    assert gone, "the deleted case's rows are gone"
+    assert not gone & all_ids(conn), "and none of their ids came back"
+
+
 def test_after_reset_demo_the_sequence_continues(demo):
     conn = demo["conn"]
     assert apply_as_new_customer(conn) == "WAL-DEMO-0001"

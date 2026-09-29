@@ -329,6 +329,13 @@ class Handler(BaseHTTPRequestHandler):
             connection()
             return "Reset. Every case is back at its first human action."
 
+        if path == "/action/delete-demo-case":
+            if form.get("confirm") != form.get("case_id"):
+                raise ValueError("tick the box to confirm the deletion")
+            result = data.delete_demo_case(conn, form["case_id"], reviewer)
+            return ("Deleted " + result["case_id"] + " (" + result["applicant"] + "). "
+                    "Its reference will not be issued again.")
+
         if path == "/action/demo-clock":
             result = data.advance_demo_clock(conn, int(form.get("days") or 0), reviewer)
             return (data.DEMO_CLOCK_LABEL + ": advanced " + str(result["days"])

@@ -560,11 +560,25 @@ def _demo_panel(conn, case_id, reviewer="analyst.demo") -> str:
     else:
         control = ("<p>Scenario <code>" + e(current) + "</code> &mdash; fixed: the simulated "
                    "providers have already answered on this case.</p>")
+    delete = ""
+    if data.demo_clock_enabled():                      # a demo build
+        delete = ('<h3>Delete this demo case</h3>'
+                  '<form method="post" action="/action/delete-demo-case" class="deleteform">'
+                  '<input type="hidden" name="case_id" value="' + e(case_id) + '">'
+                  '<input type="hidden" name="back" value="/">'
+                  '<label class="opt"><input type="checkbox" name="confirm" value="'
+                  + e(case_id) + '" required><span>Yes, permanently delete ' + e(case_id)
+                  + " and its documents, files, links and holds</span></label>"
+                  '<button class="btn btn--bad" type="submit">Delete demo case</button>'
+                  "</form>"
+                  '<p class="foot">Removes the case the same way Reset demo removes every demo '
+                  "case, and writes one line to the demo deletion log. Its reference is never "
+                  "issued again. Scripted WAL-ONB- cases cannot be deleted.</p>")
     return note("Made in the customer portal's demo application form, with synthetic data. "
                 "Every registry, identity and screening result on this case is a <strong>"
                 + e(data.SIMULATED) + "</strong>, not a real check. The case is left out of "
                 "every dataset comparison, and Reset demo deletes it."
-                "<h3>Demo scenario</h3>" + control, "info", "Demo case")
+                "<h3>Demo scenario</h3>" + control + delete, "info", "Demo case")
 
 
 def _milestones(conn, case_id) -> str:
