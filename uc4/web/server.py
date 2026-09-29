@@ -184,7 +184,7 @@ class Handler(BaseHTTPRequestHandler):
                         return self._redirect(path + first)
 
                 if path == "/":
-                    body = render.dashboard(conn)
+                    body = render.dashboard(conn, query)
                     title, active, case_id = "Operations dashboard", "Operations dashboard", None
                 elif path == "/queue":
                     body = render.queue_page(conn, role=role)

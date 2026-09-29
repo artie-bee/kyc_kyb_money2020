@@ -100,7 +100,7 @@ def flash(location):
 # ---------------------------------------------------------------------------
 
 def test_the_dashboard_lists_every_case(site):
-    status, html = get(site, "/")
+    status, html = get(site, "/?view=all")
     assert status == 200
     assert "Operations dashboard" in html
     for case_id in ("WAL-ONB-0001", "WAL-ONB-0008", "WAL-ONB-0014"):

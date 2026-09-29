@@ -1,0 +1,7 @@
+code,plain_words,description
+sanctions_escalation,Sanctions review,Compliance must resolve a sanctions or serious media finding
+eligibility,Eligibility check,The register or eligibility rules say the entity may not be onboardable
+manual_review,Document or finding review,An analyst must look at a held document or a finding
+identity_failed,Identity check,An identity check came back fail or review
+insufficient_evidence,Missing evidence,A provider did not answer or required evidence is outstanding
+resubmission,Document resubmission,The customer owes a better copy of a document

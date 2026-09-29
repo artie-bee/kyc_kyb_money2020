@@ -29,7 +29,7 @@ Total running time: about 35 minutes (5 min opening, 25 min scenarios, 5 min clo
 
 Then show the **operations dashboard** (10.1).
 
-**Point out:** every case has a status, an owner and a next action, and ageing is visible at a glance. Mention that it runs in mock mode: everything today runs on synthetic data, with no live customer or identity data.
+**Point out:** the four cards across the top — **Needs analyst**, **Needs compliance**, **Waiting on customer**, **Oldest alert** — say who has work now; click one and the list narrows to those cases. **Needs attention** lists only cases with an open alert, oldest first, with what each is waiting for in plain words. On the right, **Cases by status** and **Risk bands** count every open case; click a slice or a bar to filter. **Show all** gives every case with the full columns. Mention that it runs in mock mode: everything today runs on synthetic data, with no live customer or identity data.
 
 **Proves:** *Better status visibility* · *Synthetic-data readiness* · *No weak-compliance implication*
 
@@ -49,7 +49,7 @@ Be precise here. This POC is a standalone build that *represents* the reuse spli
 
 **Story:** an Estonian freelancer submits complete documents.
 
-1. Open Case 1 from the dashboard.
+1. Open Case 1: on the dashboard it is not in **Needs attention** (nothing is held), so click **Show all**, or use the sidebar's case selector.
 2. **Documents tab:** every document is accepted, with no flags. Extracted fields all show high confidence.
 3. **Checks tab:** identity pass; sanctions, PEP and adverse media all clear.
 4. **Risk tab:** band **low**, score **0**. No risk factors fired at all: the table reads *No factors fired.* Point out the recommended action is *approve*, but a person still has to make the decision.
@@ -211,7 +211,7 @@ Both are synthetic specimens. Never upload a real document.
 
 ---
 
-## Scenario 8 — A brand-new customer, start to finish · WAL-DEMO-0001 · about 7 min
+## Scenario 8 — A brand-new customer, start to finish · a new WAL-DEMO- case · about 7 min
 
 **Story:** a new Estonian company, Lumen Harbour OU, applies through the customer portal. Its one director, Kristiina Vaher, owns all of it. She types in the form, uploads her documents (including one blurred ID the system sends back), and the case arrives in the console ready for a decision. Nobody chased her, and nobody re-keyed anything.
 
@@ -228,10 +228,10 @@ Both are synthetic specimens. Never upload a real document.
    On *Your business*, type the registration number **EE-16550321** first and click **Look up my company**. The business name and registered address fill in, under a note headed **Simulated registry lookup**; both fields stay editable. Point out the label: this is a demo lookup, and it only fills the form. The checks later compare the register with what the *documents* say.
 
    Point out that nothing on the form asks what *kind* of applicant this is. The system decides that from the facts (here, *SME company*).
-2. **Portal:** the customer lands on *My application*, signed in to the new case (reference **WAL-DEMO-0001**). Click **Documents needed**: **0 accepted · 0 under review · 11 still needed**, one row per document, each with its own upload area.
+2. **Portal:** the customer lands on *My application*, signed in to the new case (reference **WAL-DEMO-** plus the next number: references are never reused, so it continues from the last one issued, even after Reset demo). Click **Documents needed**: **0 accepted · 0 under review · 11 still needed**, one row per document, each with its own upload area.
 3. **Portal, the refusal:** upload `07_identity_document_BLURRED.jpg` against *Identity document (passport or ID card) - Kristiina Vaher*. It is refused in plain words: *"We could not accept this file. We could not read this document clearly. Please upload a sharp, complete copy of the original."* The row now shows **Resubmission needed**.
 4. **Portal:** upload `08_identity_document_clear.jpg` against the same row, then the ten other files, each against the item named in `FORM_VALUES.md`. Each one answers *"…now under review"*: nothing is read until the whole checklist is in. The last file sets off the run and answers *"Your file has been accepted"*. The header reads **11 accepted · 0 under review · 0 still needed**.
-5. **Console** (http://127.0.0.1:8700/): open **WAL-DEMO-0001** from the dashboard.
+5. **Console** (http://127.0.0.1:8700/): open the new **WAL-DEMO-** case: it is under **Needs attention** while its documents are being checked, and always under **Show all**.
    - **Status: ready_for_decision**, owner analyst, type *sme_corporate*, no open holds.
    - **Documents tab:** all 12 uploads are marked *uploaded by applicant*. The blurred ID is still in the history. Every document and every field reads **mock: recognised demo sample file**, and there are no typed-in fields.
    - **Checks tab:** every result is a *Simulated provider response*. The registry comparison matches on name, number, address and directors: the values read off the files agree with what the customer typed.
@@ -285,7 +285,7 @@ Both are synthetic specimens. Never upload a real document.
 | "What about a confirmed sanctions hit?" | **Case 12** — clear match, critical. See *Case 12 steps* below: the decision alone sends nothing, and compliance approves the customer message as a separate step. |
 | "What if the company doesn't exist any more?" | **Case 11** — dissolved on the register; eligibility floor recommends reject; analyst agrees. |
 | "What if a provider is down?" | **Case 13** — unavailable media check never counts as a pass; the case is held as insufficient evidence. |
-| "What if the customer just stops replying?" | **Case 14** — held for the customer, awaiting a proof of address. The reminder schedule is `kb/communication_schedule.csv`. On the dashboard, tick **Waiting on customer**: case 14 shows *waiting since* and *next reminder due*. Then use the sidebar's **Demo clock - not real time**: four clicks of **+7 days** and two of **+1 day** reach day 30 — the reminder goes on day 14 and case 14 closes as withdrawn on day 30. **Reset demo** puts the clock back. |
+| "What if the customer just stops replying?" | **Case 14** — held for the customer, awaiting a proof of address. The reminder schedule is `kb/communication_schedule.csv`. On the dashboard, click the **Waiting on customer** card: case 14 is listed; its timeline shows *reminder due* and *closes if no reply*. Then use the sidebar's **Demo clock - not real time**: four clicks of **+7 days** and two of **+1 day** reach day 30 — the reminder goes on day 14 and case 14 closes as withdrawn on day 30. **Reset demo** puts the clock back. |
 
 ### Case 12 steps — confirmed sanctions match · WAL-ONB-0012 · 3 min
 

@@ -248,7 +248,7 @@ def test_alert_came_in_is_the_current_open_holds_placed_time(site):
     placed = conn.execute("SELECT MAX(placed_at) FROM case_hold WHERE case_id = 'WAL-ONB-0002'"
                           " AND released_at IS NULL").fetchone()[0]
     assert alert_at("WAL-ONB-0002") == placed == "2026-09-28T09:00:00Z"
-    page = render.dashboard(conn)
+    page = render.dashboard(conn, {"view": "all"})
     assert "Alert came in" in page and "2026-09-28 09:00 UTC" in page
 
     fake.advance(2)

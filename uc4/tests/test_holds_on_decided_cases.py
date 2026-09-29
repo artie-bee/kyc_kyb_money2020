@@ -6,6 +6,7 @@ cases someone still needs to act on. Non-final decisions leave holds alone.
 Run: python -m pytest tests/test_holds_on_decided_cases.py -q
 """
 
+import re
 import sys
 from pathlib import Path
 
@@ -54,10 +55,11 @@ def test_no_case_with_a_final_status_keeps_an_open_hold(full):
 def test_the_dashboard_counts_only_cases_someone_must_act_on(full):
     rows = {r["case_id"]: r for r in data.dashboard(full)}
     assert rows["WAL-ONB-0011"]["open_holds"] == 0
-    with_holds = sum(1 for r in rows.values() if r["open_holds"])
+    # the attention list is exactly the cases with an open hold, none of them decided
     page = render.dashboard(full)
-    assert ('<span class="stat__k">With holds</span><span class="stat__v num">'
-            + str(with_holds) + "</span>") in page
+    listed = re.findall(r'<tr class="rowlink" data-href="/case/([^"]+)"', page)
+    assert sorted(listed) == sorted(c for c, r in rows.items() if r["open_holds"])
+    assert "WAL-ONB-0011" not in listed
     assert all(r["status"] not in decision.FINAL_STATUSES for r in rows.values()
                if r["open_holds"])
 

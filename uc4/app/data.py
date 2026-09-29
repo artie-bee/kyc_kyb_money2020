@@ -219,8 +219,36 @@ def dashboard(conn) -> list[dict]:
             "alert_at": conn.execute(
                 "SELECT MAX(placed_at) FROM case_hold WHERE case_id = ?"
                 " AND released_at IS NULL", (case["case_id"],)).fetchone()[0] or "",
+            **_attention(case, open_now, risk),
         })
     return out
+
+
+# The groups an open case falls into on the dashboard - exactly one each, so
+# they add up to the open cases: the owner of its worst open hold, or with no
+# hold open, ready for a decision or on the white-label branch.
+ATTENTION_GROUPS = ("analyst", "compliance", "customer", "ready", "white_label")
+BAND_GROUPS = ("critical", "high", "medium", "low", "not scored")
+
+
+def _attention(case, open_now, risk) -> dict:
+    worst = min(open_now, key=lambda h: (holds.OWNER_RANK[h.owner],
+                                         holds.HOLD_CODES.index(h.code))) if open_now else None
+    if case["status"] in CLOSED_STATUSES:
+        group = "closed"
+    elif worst:
+        group = worst.owner
+    else:
+        group = "white_label" if case["white_label_branch_flag"] else "ready"
+    band = risk["risk_band"] if risk else ""
+    return {
+        "group": group,
+        # the hold that owns the case, in plain words (kb/hold_reason_wording.csv)
+        "waiting_for": kb().hold_reason_wording.get(worst.code, worst.code) if worst else "",
+        "more_holds": max(0, len(open_now) - 1),
+        # an unscored case, and one scored "insufficient evidence", have no number
+        "band_group": band if band in BAND_GROUPS else "not scored",
+    }
 
 
 # ---------------------------------------------------------------------------

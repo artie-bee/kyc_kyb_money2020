@@ -183,7 +183,8 @@ travel between steps as hidden fields, so nothing is stored until it is sent.
 - **The customer never chooses an applicant type.** Sending calls the existing
   intake (`process_application`), and Step 1 classifies from the facts with the
   AT rules. A form field that tries to name a type is dropped on arrival.
-- **Cases are `WAL-DEMO-0001`, `WAL-DEMO-0002`, ...** with source channel
+- **Cases are `WAL-DEMO-0001`, `WAL-DEMO-0002`, ...** (never reused: a deleted
+  case's number, or one from before Reset demo, is not issued again) with source channel
   `portal`, numbered apart from the dataset's `WAL-ONB-` series. Every query in
   `tools/compare_to_dataset.py` leaves them out, and the scores are unchanged.
   The submitted application is saved to `portal_applications/<case_id>.json`
@@ -588,14 +589,24 @@ remaining blocker. Reminders stop when nothing is owed any more
 unreadable uploads) or the case is closed. A re-upload re-runs Step 3 for that
 checklist item only.
 
-The operations dashboard has one time column, "Alert came in": when the case's
-current open hold was placed, as "2026-09-29 09:10 UTC · 25 min ago" (min / hrs /
-days, measured on the injected clock, so it follows the demo clock), a dash when
-nothing is open, sorting oldest first. A "Waiting on customer" filter
-(communication.waiting_timing) picks the cases where the customer owes an item;
-their timing - waiting since, last view, next reminder - is on the case detail
-(follow-up panel and timeline). Case and Applicant stay pinned on the left if the
-table has to scroll sideways.
+The operations dashboard (web/render.dashboard) puts every open case in exactly one
+group (data._attention): the owner of its worst open hold - Needs analyst, Needs
+compliance, Waiting on customer - or, with nothing held, ready for a decision or
+on the white-label branch. Four cards (the three owners and the oldest alert)
+head the page; "Needs attention" lists the cases with an open alert, oldest
+first: applicant, case id, restricted tag and owner; what it is waiting for in
+plain words (kb/hold_reason_wording.csv); band; and the alert as "2026-09-29
+09:10 UTC · 25 min ago", measured on the injected clock so it follows the demo
+clock. Under it: how many are ready for a decision and on the white-label branch.
+A side panel draws "Cases by status" (an inline SVG donut, the open count in the
+middle, every status with its count in the legend) and "Risk bands" (bars for
+critical / high / medium / low / not scored; not scored includes insufficient
+evidence), in the same colours as the badges. Every card, slice, legend row, bar
+and count is a plain link (?need=, ?status=, ?band=, ?view=all) that filters on
+the server, so the page works with scripts off. "Show all" is every case with the
+full columns and the status / owner / follow-up filters. Customer timing -
+waiting since, last view, next reminder - is on the case detail (follow-up panel
+and timeline).
 
 Optional early nudge: `unviewed_nudge` in kb/communication_schedule.csv, 0 (off)
 by default. Set to N days and a request the customer has not viewed after N days

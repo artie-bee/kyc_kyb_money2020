@@ -1,5 +1,5 @@
 {
-  "kb_version": "kb-2026.09-poc-v14",
+  "kb_version": "kb-2026.09-poc-v15",
   "items": {
     "applicant_type_rules": {
       "file": "applicant_type_rules.csv",
@@ -100,6 +100,11 @@
       "file": "customer_status_wording.csv",
       "version": "1.0",
       "brief_section": "5.9 / 11.3 - Customer-safe status wording, both front ends"
+    },
+    "hold_reason_wording": {
+      "file": "hold_reason_wording.csv",
+      "version": "1.0",
+      "brief_section": "10.1 - Console dashboard: what each hold is waiting for, in plain words"
     }
   }
 }

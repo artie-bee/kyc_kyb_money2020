@@ -116,7 +116,7 @@ def test_the_dashboard_shows_follow_up_timing_for_cases_2_and_14(env):
     comm = request(conn)
     fake.advance(5)
     data.record_messages_viewed(conn, CASE, [comm])
-    page = render.dashboard(conn)
+    page = render.dashboard(conn, {"view": "all"})
     fourteen, two, one = row(page, CASE), row(page, "WAL-ONB-0002"), row(page, "WAL-ONB-0001")
     # the dashboard keeps the filter; the timing columns moved to the case detail
     assert 'data-waiting="1"' in fourteen and 'data-waiting="1"' in two

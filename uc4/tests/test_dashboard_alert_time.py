@@ -64,24 +64,24 @@ def text(html):
 ])
 def test_the_format_at_each_step(conn, after, expected):
     with clock.use(clock.FakeClock(DEMO_START + after)):
-        shown = text(cell(render.dashboard(conn), "WAL-ONB-0002"))
+        shown = text(cell(render.dashboard(conn, {"view": "all"}), "WAL-ONB-0002"))
     assert shown == "2026-09-28 09:00 UTC · " + expected
 
 
 def test_advancing_the_demo_clock_one_day_turns_3_hrs_into_1_day(conn):
     with clock.use(clock.FakeClock(DEMO_START + timedelta(hours=3))):
-        assert text(cell(render.dashboard(conn), "WAL-ONB-0006")).endswith("3 hrs ago")
+        assert text(cell(render.dashboard(conn, {"view": "all"}), "WAL-ONB-0006")).endswith("3 hrs ago")
         data.advance_demo_clock(conn, 1, "analyst.test")
         # a console request runs on the demo clock
         with clock.use(data.demo_clock(conn)):
-            shown = text(cell(render.dashboard(conn), "WAL-ONB-0006"))
+            shown = text(cell(render.dashboard(conn, {"view": "all"}), "WAL-ONB-0006"))
     assert shown == "2026-09-28 09:00 UTC · 1 day ago"
 
 
 def test_no_open_alert_shows_a_dash_and_sorts_last(conn):
     decision.record_decision(conn, "WAL-ONB-0010", "analyst.test", "analyst", "approve",
                              "demo_decision", "clean", [], kb=KB)
-    page = render.dashboard(conn)
+    page = render.dashboard(conn, {"view": "all"})
     assert text(cell(page, "WAL-ONB-0010")) == "—"
     assert 'data-key="~"' in page and f'data-key="{PLACED}"' in page, \
         "the sort key is the stored time; no alert sorts after every time"
@@ -90,7 +90,7 @@ def test_no_open_alert_shows_a_dash_and_sorts_last(conn):
 def test_the_removed_columns_are_gone_but_the_case_detail_keeps_the_data(conn):
     communication.send_required_message(conn, "WAL-ONB-0014", "resubmission", KB,
                                         approver="ops.test")
-    page = render.dashboard(conn)
+    page = render.dashboard(conn, {"view": "all"})
     for heading in ("Waiting on customer since", "Last message viewed", "Next reminder due"):
         assert heading not in page
     assert page.count('class="cell-alert"') == 14, "one time column"
@@ -105,5 +105,5 @@ def test_case_and_applicant_stay_in_view(conn):
     css = (ROOT / "web" / "static" / "app.css").read_text(encoding="utf-8")
     assert "#cases th:nth-child(1), #cases td:nth-child(1) { position:sticky; left:0;" in css
     assert "#cases th:nth-child(2), #cases td:nth-child(2) { position:sticky; left:150px;" in css
-    head = re.findall(r"<th scope=\"col\"[^>]*>(\w[\w ]*)", render.dashboard(conn))
+    head = re.findall(r"<th scope=\"col\"[^>]*>(\w[\w ]*)", render.dashboard(conn, {"view": "all"}))
     assert head[:2] == ["Case", "Applicant"] and len(head) == 10

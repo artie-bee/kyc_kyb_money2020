@@ -61,6 +61,10 @@ class KnowledgeBase:
         self.resubmission_reason_text = {
             r["reason_code"]: r for r in _read_csv("resubmission_reason_text.csv")
             if r["approval_status"] == "approved"}
+        # What each hold code is called on the console dashboard ("Waiting for").
+        # Internal wording: the console only, never the customer.
+        self.hold_reason_wording = {r["code"]: r["plain_words"]
+                                    for r in _read_csv("hold_reason_wording.csv")}
 
     def reason_codes_for(self, decision: str | None = None) -> list[dict]:
         """The reason codes the KB permits, narrowed to one decision if given.
