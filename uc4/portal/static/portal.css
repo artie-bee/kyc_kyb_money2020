@@ -20,7 +20,7 @@ body { font-size:15px; line-height:1.6; }
 /* ---------- header ------------------------------------------------------ */
 
 .phead { background:var(--surface); border-bottom:1px solid var(--line); }
-.phead__in { max-width:760px; margin:0 auto; padding:14px 20px;
+.phead__in { max-width:1000px; margin:0 auto; padding:14px 20px;
              display:flex; align-items:center; justify-content:space-between;
              gap:12px; flex-wrap:wrap; }
 .phead__in--nav { padding-top:0; padding-bottom:0; }
@@ -45,8 +45,8 @@ body { font-size:15px; line-height:1.6; }
 
 /* ---------- the page ---------------------------------------------------- */
 
-.pmain { max-width:760px; margin:0 auto; padding:28px 20px 56px; }
-.pfoot { max-width:760px; margin:0 auto; padding:0 20px 28px; }
+.pmain { max-width:1000px; margin:0 auto; padding:28px 20px 56px; }
+.pfoot { max-width:1000px; margin:0 auto; padding:0 20px 28px; }
 
 .phero { margin-bottom:20px; }
 .phero h1 { font-size:24px; font-weight:630; letter-spacing:-.015em; margin:0; }
@@ -59,6 +59,61 @@ h2 { font-size:17px; font-weight:600; margin:28px 0 10px; }
 .note { font-size:14.5px; color:var(--fg); }
 .btn { font-size:14px; padding:8px 15px; }
 .btn--primary { font-weight:560; }
+
+/* ---------- a professional frame: brand, account, unread badge ------------ */
+
+.phead { box-shadow:0 1px 0 var(--line); }
+.phead__brand { display:inline-flex; align-items:center; gap:9px; }
+.phead__brand .phead__mark { width:28px; height:28px; border-radius:7px; display:inline-flex;
+               align-items:center; justify-content:center; font-weight:700; font-size:15px;
+               color:#fff; background:var(--accent); letter-spacing:0; margin-left:0; }
+.phead__avatar { width:28px; height:28px; border-radius:50%; display:inline-flex;
+                 align-items:center; justify-content:center; font-size:11.5px; font-weight:650;
+                 color:var(--accent); background:var(--accent-soft);
+                 border:1px solid var(--accent-line); }
+.pnav__item { display:inline-flex; align-items:center; gap:6px; }
+.pnav__badge { min-width:19px; height:19px; padding:0 6px; border-radius:99px;
+               display:inline-flex; align-items:center; justify-content:center;
+               font-size:11px; font-weight:700; color:#fff; background:var(--bad); }
+.pnav__badge[hidden] { display:none; }
+.newtag { display:inline-block; font-size:11px; font-weight:650; letter-spacing:.02em;
+          color:#fff; background:var(--accent); border-radius:3px; padding:1px 6px; }
+
+/* the new-message card, top right; it slides in when it arrives */
+.toasts { position:fixed; top:84px; right:18px; z-index:50; display:flex;
+          flex-direction:column; gap:10px; width:min(360px, calc(100vw - 36px)); }
+.toast { display:flex; gap:10px; align-items:flex-start; background:var(--surface);
+         border:1px solid var(--line); border-left:4px solid var(--accent);
+         border-radius:8px; padding:12px 12px 12px 14px;
+         box-shadow:0 8px 24px rgba(21, 26, 32, .14); }
+.toast--arrived { animation:toast-in .25s ease-out; }
+@keyframes toast-in { from { opacity:0; transform:translateY(-8px); } to { opacity:1; } }
+.toast__dot { width:9px; height:9px; margin-top:6px; border-radius:50%; flex:none;
+              background:var(--accent); }
+.toast__body { flex:1; min-width:0; display:flex; flex-direction:column; gap:2px; }
+.toast__title { font-size:14px; }
+.toast__when { font-size:12px; color:var(--fg-faint); }
+.toast__text { margin:4px 0 8px; font-size:13.5px; color:var(--fg-mute); }
+.toast__go { align-self:flex-start; font-size:13px; padding:5px 12px; }
+.toast__close { border:0; background:transparent; font-size:20px; line-height:1;
+                color:var(--fg-faint); cursor:pointer; padding:0 2px; }
+.toast__close:hover { color:var(--fg); }
+@media (max-width:560px) { .toasts { top:auto; bottom:14px; right:14px; } }
+
+/* the overview: progress on the left, reference / message / documents right */
+.overview { display:grid; grid-template-columns:minmax(0,1fr) 260px; gap:18px;
+            align-items:start; }
+.card { background:var(--surface); border:1px solid var(--line); border-radius:8px;
+        padding:14px 16px; margin-bottom:14px; }
+.card__h { margin:0 0 8px; font-size:12px; text-transform:uppercase; letter-spacing:.07em;
+           color:var(--fg-faint); font-weight:650; }
+.card__big { margin:0; font-size:17px; }
+.card__meta { margin:4px 0 0; font-size:12.5px; color:var(--fg-mute); }
+.card__text { margin:6px 0 8px; font-size:13.5px; color:var(--fg-mute); }
+.card__link { font-size:13px; font-weight:560; }
+.mono { font-family:var(--mono); }
+.overview .steps { margin-top:6px; }
+@media (max-width:820px) { .overview { grid-template-columns:1fr; } }
 
 /* ---------- 1. My application: the five steps ---------------------------- */
 
@@ -168,9 +223,17 @@ h2 { font-size:17px; font-weight:600; margin:28px 0 10px; }
 
 /* ---------- 3. Messages -------------------------------------------------- */
 
-.msgs { list-style:none; margin:0; padding:0; }
-.msg { padding:14px 16px; font-size:15px; }
-.msg__when { font-size:12px; }
+.msgs { list-style:none; margin:10px 0 0; padding:0; display:flex; flex-direction:column;
+        gap:10px; }
+.msg { padding:14px 16px; font-size:15px; background:var(--surface);
+       border:1px solid var(--line); border-radius:8px; }
+.msg__head { display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:6px; }
+.msg__from { display:inline-flex; align-items:center; gap:8px; font-weight:600; font-size:14px; }
+.msg__avatar { width:26px; height:26px; border-radius:50%; display:inline-flex;
+               align-items:center; justify-content:center; font-size:12px; font-weight:700;
+               color:#fff; background:var(--accent); }
+.msg__when { margin-left:auto; font-size:12px; color:var(--fg-faint); }
+.msg__text { margin:0; color:var(--fg); }
 
 /* ---------- 4. Demo case selector ---------------------------------------- */
 

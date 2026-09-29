@@ -123,9 +123,14 @@ def customer_view(conn, case_id: str) -> dict:
         " WHERE c.case_id = ?", (case_id,)).fetchone()
 
     # The id travels with each message so the portal can record which ones the
-    # customer was shown; it is never printed on the page.
+    # customer was shown; it is never printed on the page. A message is unread
+    # until the Messages page has shown it (the audited "message_viewed").
+    seen = set(re.findall(r"COM-\d+", " ".join(
+        p for (p,) in conn.execute("SELECT payload_summary FROM audit_event WHERE case_id = ?"
+                                   " AND action = 'message_viewed'", (case_id,)))))
     messages = [
-        {"sent_at": r["sent_at"], "text": r["body"], "communication_id": r["communication_id"]}
+        {"sent_at": r["sent_at"], "text": r["body"], "communication_id": r["communication_id"],
+         "unread": r["communication_id"] not in seen}
         for r in conn.execute(
             "SELECT o.sent_at, o.body, o.communication_id FROM outbox o WHERE o.case_id = ?"
             " AND o.audience = 'applicant' ORDER BY o.outbox_id", (case_id,))
@@ -138,6 +143,7 @@ def customer_view(conn, case_id: str) -> dict:
         "status_text": PARTNER_LINE if partner else PLAIN_STATUS.get(case["status"], FALLBACK),
         "applied_on": applied_on,
         "messages": messages,
+        "unread": sum(1 for m in messages if m["unread"]),
         "partner": partner,
         "closed": case["status"] in CLOSED_STATUSES,
         "steps": [] if partner else _steps(conn, case_id, case, applied_on),
@@ -417,6 +423,14 @@ def demo_card(conn, case_id: str) -> dict:
             "still_needed": cl["still_needed"] if group == NEEDS_ACTION else 0,
             "partner": view["partner"], "last_message": last,
             "applied_on": view["applied_on"]}
+
+
+def snippet(text: str, limit: int = 140) -> str:
+    """A preview of an approved message: its own words, the greeting dropped.
+    No wording is added - the portal previews what the template says."""
+    body = re.sub(r"^(Hello|Dear)\b[^,]*,\s*", "", text or "").strip()
+    body = body[:1].upper() + body[1:]
+    return body if len(body) <= limit else body[:limit].rsplit(" ", 1)[0] + "…"
 
 
 def visible_text(page: str) -> str:

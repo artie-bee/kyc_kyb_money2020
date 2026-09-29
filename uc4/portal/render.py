@@ -14,6 +14,8 @@ at the door rather than shown.
 
 import html
 
+from app.customer_view import snippet
+
 BANNER = "Demo portal - do not upload real documents."
 
 NAV = [("My application", "/"), ("Documents needed", "/checklist"),
@@ -60,20 +62,65 @@ def next_step_card(step, cl) -> str:
             '<span class="nextstep__label">Next step</span>' + body + "</section>")
 
 
+def _when(stamp) -> str:
+    """2026-09-29T07:40:34Z -> 29 Sep 2026, 07:40 UTC."""
+    if not stamp:
+        return ""
+    months = "Jan Feb Mar Apr May Jun Jul Aug Sep Oct Nov Dec".split()
+    y, m, d = stamp[:10].split("-")
+    return f"{int(d)} {months[int(m) - 1]} {y}, {stamp[11:16]} UTC"
+
+
+def _badge(n) -> str:
+    """The unread count beside Messages. Always in the page (so the script can
+    update it); hidden when there is nothing unread."""
+    return ('<span class="pnav__badge" data-unread="' + str(n) + '"'
+            + ("" if n else " hidden") + ' aria-label="' + str(n) + ' unread">'
+            + str(n) + "</span>")
+
+
+def toast(view) -> str:
+    """A card announcing the newest unread message, with a link to read it.
+    Shown on every page but Messages while anything is unread; the script can
+    dismiss it, and shows a new one when a message arrives while the page is
+    open. Its words are the message's own (customer_view.snippet)."""
+    unread = [m for m in view["messages"] if m["unread"]]
+    if not unread:
+        return ""
+    newest = unread[-1]
+    more = (" and " + str(len(unread) - 1) + " more") if len(unread) > 1 else ""
+    return ('<aside class="toast" role="status" aria-live="polite" data-toast="'
+            + e(newest["communication_id"]) + '">'
+            '<span class="toast__dot" aria-hidden="true"></span>'
+            '<div class="toast__body"><strong class="toast__title">New message from Wallester'
+            + e(more) + "</strong>"
+            '<span class="toast__when">' + e(_when(newest["sent_at"])) + "</span>"
+            '<p class="toast__text">' + e(snippet(newest["text"], 110)) + "</p>"
+            '<a class="btn btn--primary toast__go" href="/messages">Read message</a></div>'
+            '<button class="toast__close" type="button" aria-label="Dismiss" hidden>'
+            "&times;</button></aside>")
+
+
 def page(title, body, view=None, active=None, flash=None, demo=False, step=None,
-         cl=None) -> str:
+         cl=None, unread=None) -> str:
     """The shell every portal page shares: banner, header, one calm column."""
     nav = ""
     who = ""
+    note_new = ""
     if view is not None:
+        count = view.get("unread", 0) if unread is None else unread
         links = "".join(
             '<a class="pnav__item' + (" pnav__item--on" if name == active else "")
             + '" href="' + href + '"' + (' aria-current="page"' if name == active else "")
-            + ">" + e(name) + "</a>" for name, href in NAV)
+            + ">" + e(name) + (_badge(count) if href == "/messages" else "") + "</a>"
+            for name, href in NAV)
         nav = '<nav class="pnav" aria-label="Your application">' + links + "</nav>"
-        who = ('<div class="phead__who"><span>' + e(view["applicant_name"]) + "</span>"
+        initials = "".join(w[0] for w in view["applicant_name"].split()[:2]).upper()
+        who = ('<div class="phead__who"><span class="phead__avatar" aria-hidden="true">'
+               + e(initials) + "</span><span>" + e(view["applicant_name"]) + "</span>"
                '<form method="post" action="/signout">'
                '<button class="btn btn--quiet" type="submit">Sign out</button></form></div>')
+        note_new = toast(view) if active != "Messages" else ""
     switch = ('<a class="phead__demo" href="/demo">Switch demo customer</a>'
               if demo else "")
 
@@ -88,13 +135,16 @@ def page(title, body, view=None, active=None, flash=None, demo=False, step=None,
         '<meta name="viewport" content="width=device-width, initial-scale=1">\n'
         "<title>" + e(title) + " &middot; Wallester Business onboarding</title>\n"
         '<link rel="stylesheet" href="/static/common.css">\n'
-        '<link rel="stylesheet" href="/static/portal.css">\n</head>\n<body>\n'
+        '<link rel="stylesheet" href="/static/portal.css">\n</head>\n<body'
+        + (' data-poll="1"' if view is not None else "") + ">\n"
         '<div class="demo-banner" role="note">' + e(BANNER) + "</div>\n"
         '<header class="phead"><div class="phead__in">'
-        '<a class="phead__brand" href="/">Wallester <span>Business onboarding</span></a>'
+        '<a class="phead__brand" href="/"><span class="phead__mark" aria-hidden="true">W</span>'
+        'Wallester <span>Business onboarding</span></a>'
         + who + "</div>" + ('<div class="phead__in phead__in--nav">' + nav + switch + "</div>"
                             if nav or switch else "")
         + "</header>\n"
+        '<div class="toasts" id="toasts">' + note_new + "</div>\n"
         '<main class="pmain">\n' + flash_html + next_step_card(step, cl) + body
         + "\n</main>\n"
         '<footer class="pfoot"><button class="btn btn--quiet" type="button" id="theme" hidden>'
@@ -112,7 +162,7 @@ def _heading(view, sub=None) -> str:
 # 1. My application
 # ---------------------------------------------------------------------------
 
-def application(view) -> str:
+def application(view, cl=None) -> str:
     if view["partner"]:
         return (_heading(view) + note(e(view["status_text"]), "info",
                                       "Partner programme")
@@ -135,8 +185,38 @@ def application(view) -> str:
         cta = ('<p class="cta"><a class="btn btn--primary" href="/checklist">'
                "Go to your documents</a></p>")
     return (_heading(view)
+            + '<div class="overview"><div class="overview__main">'
             + note(e(view["status_text"]), "info")
-            + '<ol class="steps">' + "".join(steps) + "</ol>" + cta)
+            + '<section class="card"><h2 class="card__h">Your progress</h2>'
+            '<ol class="steps">' + "".join(steps) + "</ol>" + cta + "</section></div>"
+            + _side(view, cl) + "</div>")
+
+
+def _side(view, cl) -> str:
+    """The overview's side column: the reference, the latest message and the
+    documents - each read from customer_view, nothing added."""
+    latest = view["messages"][-1] if view["messages"] else None
+    if latest:
+        msg = ('<p class="card__meta">' + e(_when(latest["sent_at"]))
+               + (' <span class="newtag">New</span>' if latest["unread"] else "") + "</p>"
+               '<p class="card__text">' + e(snippet(latest["text"], 120)) + "</p>"
+               '<a class="card__link" href="/messages">Open messages</a>')
+    else:
+        msg = '<p class="card__text muted">We have not sent you any messages yet.</p>'
+    docs = ""
+    if cl is not None and cl["total_needed"]:
+        docs = ('<section class="card"><h2 class="card__h">Documents</h2>'
+                '<p class="card__big"><strong>' + str(cl["accepted"]) + "</strong> of "
+                + str(cl["total_needed"]) + " accepted</p>"
+                '<p class="card__meta">' + str(cl["under_review"]) + " under review &middot; "
+                + str(cl["still_needed"]) + " still needed</p>"
+                '<a class="card__link" href="/checklist">View documents</a></section>')
+    return ('<aside class="overview__side">'
+            '<section class="card"><h2 class="card__h">Your reference</h2>'
+            '<p class="card__big mono">' + e(view["case_id"]) + "</p>"
+            '<p class="card__meta">Quote it if you contact us.</p></section>'
+            '<section class="card"><h2 class="card__h">Latest message</h2>' + msg + "</section>"
+            + docs + "</aside>")
 
 
 # ---------------------------------------------------------------------------
@@ -222,11 +302,23 @@ def checklist(view, cl) -> str:
 # ---------------------------------------------------------------------------
 
 def messages(view) -> str:
-    msgs = ['<li class="msg"><span class="msg__when">' + e(m["sent_at"].replace("T", " ")
-                                                          .rstrip("Z"))
-            + "</span>" + e(m["text"]) + "</li>" for m in view["messages"]]
-    body = ('<ol class="msgs">' + "".join(msgs) + "</ol>" if msgs
-            else '<p class="empty">We have not sent you any messages yet.</p>')
+    """An inbox, in the order the messages were sent (the newest last, as in a
+    conversation). A message the customer has not opened before is marked New
+    on this visit - opening this page is what marks it read."""
+    msgs = []
+    for m in view["messages"]:
+        msgs.append('<li class="msg">'
+                    '<div class="msg__head"><span class="msg__from">'
+                    '<span class="msg__avatar" aria-hidden="true">W</span>'
+                    "Wallester Business onboarding</span>"
+                    + ('<span class="newtag">New</span>' if m["unread"] else "")
+                    + '<span class="msg__when">' + e(_when(m["sent_at"])) + "</span></div>"
+                    '<p class="msg__text">' + e(m["text"]) + "</p></li>")
+    unread = sum(1 for m in view["messages"] if m["unread"])
+    count = (str(len(msgs)) + " message" + ("" if len(msgs) == 1 else "s")
+             + (" &middot; " + str(unread) + " new" if unread else ""))
+    body = ('<p class="sub">' + count + '</p><ol class="msgs">' + "".join(msgs) + "</ol>"
+            if msgs else '<p class="empty">We have not sent you any messages yet.</p>')
     return _heading(view) + "<h2>Messages we have sent you</h2>" + body
 
 

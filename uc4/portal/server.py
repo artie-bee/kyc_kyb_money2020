@@ -26,6 +26,7 @@ The rules it keeps:
     python tools/serve_portal.py
 """
 
+import json
 import secrets
 import sys
 import threading
@@ -40,7 +41,7 @@ sys.path.insert(0, str(UC4))
 from app import data                                                  # noqa: E402
 from orchestrator import clock                                        # noqa: E402
 from app.customer_view import (customer_checklist, customer_view,        # noqa: E402
-                               demo_card, leaks, next_step)
+                               demo_card, leaks, next_step, snippet)
 from orchestrator.steps.document_quality import MAX_UPLOAD_BYTES, UploadRefused  # noqa: E402
 from portal import apply, render, render_form                         # noqa: E402
 
@@ -184,6 +185,8 @@ class Handler(BaseHTTPRequestHandler):
                         return self._page(render.page(
                             "Apply", render_form.application_form(apply.BUSINESS, {}),
                             flash=flash, demo=demo))
+                    if path == "/api/unread":
+                        return self._unread(conn)
                     if path not in ("/", "/checklist", "/messages"):
                         return self._page(render.page("Not found", render.not_found(),
                                                       demo=demo), 404)
@@ -198,7 +201,7 @@ class Handler(BaseHTTPRequestHandler):
                     cl = customer_checklist(conn, case_id)
                     step = next_step(cl, view)
                     if path == "/":
-                        body, title, active = render.application(view), "My application", \
+                        body, title, active = render.application(view, cl), "My application", \
                             "My application"
                     elif path == "/checklist":
                         body = render.checklist(view, cl)
@@ -210,13 +213,36 @@ class Handler(BaseHTTPRequestHandler):
                             # changes a reminder.
                             data.record_messages_viewed(
                                 conn, case_id, [m["communication_id"] for m in view["messages"]])
+                    # On Messages everything shown is now read, so the badge clears.
                     return self._page(render.page(title, body, view, active, flash, demo,
-                                                  step=step, cl=cl))
+                                                  step=step, cl=cl,
+                                                  unread=0 if active == "Messages" else None))
                 finally:
                     conn.close()
         except Exception:
             traceback.print_exc()
             return self._page(render.page("Not available", render.refused(), demo=demo), 500)
+
+    def _unread(self, conn):
+        """How many messages the signed-in customer has not opened, and a
+        preview of the newest - what portal.js checks every few seconds to
+        update the badge and pop up a card. Read only: nothing is marked read
+        here. Its words are the message's own, and pass the same leak check as
+        every page."""
+        case_id = data.portal_case(conn, self._token())
+        if case_id is None:
+            return self._send(b'{"signed_in": false}', 401, "application/json")
+        view = customer_view(conn, case_id)
+        unread = [m for m in view["messages"] if m["unread"]]
+        newest = unread[-1] if unread else None
+        body = {"signed_in": True, "unread": len(unread),
+                "newest": {"id": newest["communication_id"],
+                           "when": render._when(newest["sent_at"]),
+                           "text": snippet(newest["text"], 110)} if newest else None}
+        text = json.dumps(body)
+        if leaks(text):
+            return self._send(b'{"unread": 0}', 500, "application/json")
+        return self._send(text.encode("utf-8"), ctype="application/json")
 
     def _static(self, path):
         target = (STATIC / path[len("/static/"):]).resolve()

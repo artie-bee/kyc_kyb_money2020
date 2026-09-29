@@ -1,5 +1,6 @@
 /* The portal's only script: the theme switch, a sign of life while a file
-   uploads, and the demo selector's filter-as-you-type. Like the console's app.js, it adds and never decides - every page is
+   uploads, the demo selector's filter-as-you-type, and the new-message card
+   and unread count kept up to date while a page is open. Like the console's app.js, it adds and never decides - every page is
    complete as the server sends it, and every upload is a plain form post, so
    with the script blocked nothing is lost but the two conveniences. */
 (function () {
@@ -55,6 +56,81 @@
       }
     });
   });
+
+  // ---- new-message card: dismiss it, and pop one up when a message arrives --
+  // The card and the unread count are in the page as the server sends it;
+  // this only adds a dismiss button and checks for new messages while the
+  // page is open, so a message sent from the console appears within seconds.
+  var DISMISSED = "wal-uc4-toast-dismissed";
+  function dismissed() {
+    try { return sessionStorage.getItem(DISMISSED) || ""; } catch (e) { return ""; }
+  }
+  function wireToast(card) {
+    if (card.getAttribute("data-toast") === dismissed()) { card.remove(); return; }
+    var close = card.querySelector(".toast__close");
+    if (!close) return;
+    close.hidden = false;
+    close.addEventListener("click", function () {
+      try { sessionStorage.setItem(DISMISSED, card.getAttribute("data-toast")); } catch (e) {}
+      card.remove();
+    });
+  }
+  Array.prototype.forEach.call(document.querySelectorAll(".toast"), wireToast);
+
+  function el(tag, cls, text) {
+    var n = document.createElement(tag);
+    if (cls) n.className = cls;
+    if (text) n.textContent = text;
+    return n;
+  }
+  function showToast(newest, count) {
+    var box = document.getElementById("toasts");
+    if (!box || !newest || newest.id === dismissed()) return;
+    var old = box.querySelector(".toast");
+    if (old && old.getAttribute("data-toast") === newest.id) return;
+    if (old) old.remove();
+    var card = el("aside", "toast toast--arrived");
+    card.setAttribute("role", "status");
+    card.setAttribute("aria-live", "polite");
+    card.setAttribute("data-toast", newest.id);
+    var dot = el("span", "toast__dot");
+    dot.setAttribute("aria-hidden", "true");
+    var body = el("div", "toast__body");
+    body.appendChild(el("strong", "toast__title", "New message from Wallester"
+      + (count > 1 ? " and " + (count - 1) + " more" : "")));
+    body.appendChild(el("span", "toast__when", newest.when));
+    body.appendChild(el("p", "toast__text", newest.text));
+    var go = el("a", "btn btn--primary toast__go", "Read message");
+    go.href = "/messages";
+    body.appendChild(go);
+    var close = el("button", "toast__close", "×");
+    close.type = "button";
+    close.setAttribute("aria-label", "Dismiss");
+    card.appendChild(dot); card.appendChild(body); card.appendChild(close);
+    box.appendChild(card);
+    wireToast(card);
+  }
+  function setBadge(count) {
+    Array.prototype.forEach.call(document.querySelectorAll(".pnav__badge"), function (b) {
+      b.textContent = count;
+      b.setAttribute("data-unread", count);
+      b.setAttribute("aria-label", count + " unread");
+      b.hidden = count === 0;
+    });
+  }
+  var onMessages = location.pathname === "/messages";
+  function check() {
+    if (!window.fetch) return;
+    fetch("/api/unread", { credentials: "same-origin", cache: "no-store" })
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (d) {
+        if (!d || !d.signed_in) return;
+        if (!onMessages) { setBadge(d.unread); if (d.unread) showToast(d.newest, d.unread); }
+        else if (d.unread) { setBadge(d.unread); showToast(d.newest, d.unread); }
+      })
+      .catch(function () { /* offline for a moment: try again next time */ });
+  }
+  if (document.body.getAttribute("data-poll") === "1") setInterval(check, 15000);
 
   // ---- demo selector: filter the customers as you type -------------------
   // The search box is also a plain GET form, so without this it still works
