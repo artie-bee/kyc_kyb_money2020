@@ -31,6 +31,8 @@ from . import communication, evidence_pack
 
 ACTOR = "step.decision"
 APPROVING = ("approve", "conditional_approve")
+# Statuses a decision can leave a case in that end it.
+FINAL_STATUSES = ("approved", "rejected", "closed_withdrawn")
 COMPLIANCE_ONLY_BANDS = ("critical",)
 
 # situation used for the customer message that follows each decision
@@ -189,6 +191,14 @@ def record_decision(conn, case_id: str, reviewer: str, reviewer_role: str, decis
     status = rule["resulting_status"]
     db.update_case(conn, case_id, status=status,
                    next_action_owner="compliance" if decision == "escalate" else "system")
+
+    # A final decision settles the case: nobody still needs to act on a hold it
+    # left open (a reject over an eligibility hold, say). Each is closed by the
+    # deciding reviewer, "case decided", and audited like any other release.
+    if status in FINAL_STATUSES:
+        for hold in holds.open_holds(conn, case_id):
+            holds.release(conn, hold.hold_id, reviewer,
+                          f"case decided: {decision} recorded as {decision_id}", kb=kb)
 
     comm = None
     situation, template_id = message_plan(kb, decision, case)
