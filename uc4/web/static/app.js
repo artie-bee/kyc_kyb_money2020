@@ -69,6 +69,18 @@
     location.href = picker.getAttribute("data-base") + picker.value;
   });
 
+  // ---- a form that must go once: say it is going, and stop a second click --
+  Array.prototype.forEach.call(document.querySelectorAll("form[data-once]"), function (form) {
+    form.addEventListener("submit", function () {
+      var btn = form.querySelector("button[type=submit]");
+      if (!btn || btn.hasAttribute("data-busy")) return;
+      btn.setAttribute("data-busy", "");
+      btn.textContent = "Sending…";
+      // disabled after the submit has been queued, so the form still posts
+      setTimeout(function () { btn.disabled = true; }, 0);
+    });
+  });
+
   // ---- decision tab: customer message preview ---------------------------
   // Every decision's preview is on the page; show only the one selected.
   // With scripts off they all stay visible, each under its decision.

@@ -16,6 +16,7 @@ interpolation is a syntax error.
 """
 
 import html
+import re
 import sys
 from pathlib import Path
 from urllib.parse import quote
@@ -563,7 +564,7 @@ def dashboard(conn, query=None, **kw) -> str:
 # ---------------------------------------------------------------------------
 
 def case_detail(conn, case_id, tab="Timeline", role="analyst",
-                reviewer="analyst.demo", **kw) -> str:
+                reviewer="analyst.demo", flash=None, **kw) -> str:
     detail = data.case(conn, case_id)
     case, applicant = detail["case"], detail["applicant"]
     open_now = data.open_holds(conn, case_id)
@@ -624,7 +625,7 @@ def case_detail(conn, case_id, tab="Timeline", role="analyst",
         "Checks": _tab_checks, "Risk": _tab_risk,
         MESSAGES_TAB: _tab_decision_messages,
     }
-    inner = renderers[tab](conn, case_id, role=role, reviewer=reviewer)
+    inner = renderers[tab](conn, case_id, role=role, reviewer=reviewer, flash=flash)
 
     return (
         '<header class="page"><h1>' + idtag(case_id) + " " + e(applicant["legal_name"])
@@ -1746,45 +1747,85 @@ def _follow_up_panel(conn, case_id) -> str:
             + '<p class="foot">All times ' + e(zone) + ". " + limit + "</p>")
 
 
-def _tab_decision_messages(conn, case_id, role="analyst", reviewer="analyst.demo", **kw):
+def _tab_decision_messages(conn, case_id, role="analyst", reviewer="analyst.demo",
+                           flash=None, **kw):
     """The Decision and Communications tabs as one, in the order a person works:
     what the customer owes, the decision, then every message and Send a message.
     Each section keeps an id, so the old tab links land on it."""
     return ('<section id="follow-up">' + _follow_up_panel(conn, case_id) + "</section>"
             '<section id="decision">' + _tab_decision(conn, case_id, role=role,
                                                       reviewer=reviewer) + "</section>"
-            '<section id="messages">' + _message_history(conn, case_id) + "</section>")
+            '<section id="messages">' + _message_history(conn, case_id, flash)
+            + "</section>")
 
 
-def _message_history(conn, case_id, **kw):
+def _when_short(stamp) -> str:
+    return stamp[:16].replace("T", " ") + " UTC" if stamp else ""
+
+
+def _message_history(conn, case_id, flash=None, **kw):
+    """Every message on the case, and Send a message - which says, right where
+    it is used, what it has just sent and which situations already went out.
+    Presentation only: sending the same situation again is still allowed."""
     out = ["<h2>Message history</h2>"]
     for t in data.compliance_tasks(conn, case_id):
         out.append(note(e(t["reason"]), "bad", "Compliance task " + e(t["task_id"])
                         + ": " + e(t["task"])))
 
+    # The message this page was redirected back with, if it was a send.
+    just = None
+    if flash and flash[0] in ("ok", "err"):
+        m = re.match(r"Message (COM-\d+) \((TPL-\d+)\) (\w+)", flash[1])
+        just = m.groups() if m and flash[0] == "ok" else None
     messages = data.communications(conn, case_id)
     if not messages:
         out.append('<p class="empty">Nothing drafted yet.</p>')
     for m in messages:
+        fresh = just is not None and m["communication_id"] == just[0]
         head = (idtag(m["template_id"]) + " to " + e(m["audience"]) + " "
                 + chip(m["approval_status"], {"approved": "ok"})
-                + chip(m["sent_status"], {"sent": "ok", "not_sent": "neutral"}))
+                + chip(m["sent_status"], {"sent": "ok", "not_sent": "neutral"})
+                + (' <span class="justsent">Just sent</span>' if fresh else "")
+                + ' <span class="muted">' + e(_when_short(m["created_at"])) + "</span>")
         meta = (e(m["communication_id"]) + " &mdash; " + e(m["message_type"])
                 + ", situation " + e(m["situation"] or "-")
                 + (", approved by " + e(m["approved_by"]) if m["approved_by"] else ""))
-        out.append('<details class="doc"><summary>' + head + "</summary>"
+        out.append('<details class="doc' + (" doc--fresh" if fresh else "") + '"'
+                   + (" open" if fresh else "") + "><summary>" + head + "</summary>"
                    '<div class="body"><p>' + e(m["rendered_text"]) + "</p>"
                    '<p class="foot">' + meta + "</p></div></details>")
 
+    # Which situations have already gone to the customer, and when (the latest).
+    sent = {}
+    for m in messages:
+        if m["audience"] == "applicant" and m["sent_status"] == "sent" and m["situation"]:
+            sent[m["situation"]] = m
     situations = sorted({r["situation"] for r in data.kb().communication_rules})
-    opts = "".join("<option>" + e(s) + "</option>" for s in situations)
+    opts = "".join(
+        '<option value="' + e(s) + '">' + e(s)
+        + (" — already sent " + e(_when_short(sent[s]["created_at"])) if s in sent else "")
+        + "</option>" for s in situations)
+    done = ""
+    if just:
+        done = note("Message " + idtag(just[0]) + " sent to the customer under "
+                    + idtag(just[1]) + ". It is marked <strong>Just sent</strong> above, and "
+                    "the customer sees it on their Messages page. Delivery: "
+                    + e(data.DELIVERY_LABEL) + ".", "ok", "Sent")
+    elif flash and flash[0] == "err" and "send" in flash[1].lower():
+        done = note(e(flash[1]), "bad", "Not sent")
+    already = ""
+    if sent:
+        already = ('<p class="sentlist"><strong>Already sent to this customer:</strong> '
+                   + ", ".join(e(s) + ' <span class="muted">(' + e(sent[s]["communication_id"])
+                               + ", " + e(_when_short(sent[s]["created_at"])) + ")</span>"
+                               for s in sorted(sent)) + "</p>")
     out.append(
-        "<h3>Send a message</h3>"
-        '<form method="post" action="/action/send-message" class="panel">'
+        "<h3>Send a message</h3>" + done
+        + '<form method="post" action="/action/send-message" class="panel" data-once>'
         '<input type="hidden" name="case_id" value="' + e(case_id) + '">'
         '<input type="hidden" name="back" value="' + e(tab_href(case_id, "Communications"))
-        + '">'
-        '<div class="field"><label>Situation</label><select name="situation">' + opts
+        + '">' + already
+        + '<div class="field"><label>Situation</label><select name="situation">' + opts
         + "</select></div>"
         '<button class="btn btn--primary" type="submit">Draft and approve as me</button>'
         "</form>")

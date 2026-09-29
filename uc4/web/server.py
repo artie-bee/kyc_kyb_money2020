@@ -221,7 +221,7 @@ class Handler(BaseHTTPRequestHandler):
                     if self.command == "GET":
                         data.record_alert_opened(conn, case_id, reviewer, role)
                     body = render.case_detail(conn, case_id, tab=tab, role=role,
-                                              reviewer=reviewer)
+                                              reviewer=reviewer, flash=flash)
                     title, active = case_id, "Case detail"
                 elif path.startswith("/customer/"):
                     case_id = path[len("/customer/"):]
