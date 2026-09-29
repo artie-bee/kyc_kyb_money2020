@@ -607,6 +607,22 @@ advance is audited (`demo_clock_advanced`) on every case; the offset is read
 back from those rows, so the portal keeps the same date (it shows no control),
 and Reset demo returns it to the start.
 
+Case timeline (top of the Timeline tab): the key moments in plain words -
+application received, each alert (hold placed, with its reason), opened by
+analyst, request sent (items), viewed by customer, reminder or nudge sent,
+upload, decision, case closed - read from the audit trail by
+data.case_milestones; scheduled items (not viewed yet, reminder due, closes if
+no reply) are dashed until they happen. The full audit list stays below.
+
+Automatic "opened" record: opening a case's detail page (GET /case/<id>, any
+tab) audits `alert_opened` for each open hold that this user may act on (the
+"why is this case here" test, which for a decision is check_permitted) and that
+nobody has opened yet - once per hold, so a new hold needs a new open. The
+dashboard, My queue, the customer view, exports and redirects record nothing;
+nor does a user who cannot act on the alert. It changes nothing else. The
+dashboard's "Alert came in (UTC)" is the placed time of the most recent open
+hold, blank when none is open.
+
 Templates awaiting Wallester approval - interim reuse of approved wording until
 dedicated templates are approved:
   - situation `reminder`       reuses TPL-0001 (resubmission request)

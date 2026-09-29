@@ -26,7 +26,7 @@ desk - what differs is what the analyst is being asked to do.
 
 from dataclasses import dataclass
 
-from . import db
+from . import clock, db
 
 # Reason codes, worst first within an owner.
 HOLD_CODES = (
@@ -137,6 +137,19 @@ def release_own(conn, case_id: str, step: str, release_reason: str, kb=None) -> 
     for row in rows:
         release(conn, row["hold_id"], step, release_reason, by_step=step, kb=kb)
     return len(rows)
+
+
+def record_opened(conn, hold: Hold, who: str, role: str, kb=None) -> int:
+    """A person who may act on this hold has opened the case: audit it as
+    "alert_opened", with how long after the hold was placed. A record only -
+    it changes no status, hold, owner or permission. Returns the minutes."""
+    placed = conn.execute("SELECT placed_at FROM case_hold WHERE hold_id = ?",
+                          (hold.hold_id,)).fetchone()["placed_at"]
+    minutes = max(0, int((clock.current().now() - clock.parse(placed)).total_seconds() // 60))
+    db.audit(conn, hold.case_id, role, who, "alert_opened",
+             f"{hold.hold_id} opened by {who} ({role}) {minutes} min after the alert; "
+             f"{hold.reason}", getattr(kb, "version", None))
+    return minutes
 
 
 def open_holds(conn, case_id: str) -> list[Hold]:

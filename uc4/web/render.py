@@ -312,6 +312,8 @@ def dashboard(conn, **kw) -> str:
             '<td class="ta-r">' + score + "</td>"
             '<td class="ta-r">' + holds + "</td>"
             '<td class="cell-detail">' + detail + "</td>"
+            '<td class="cell-wait">' + (e(r["alert_at"].replace("T", " ").rstrip("Z") + " UTC")
+                                        if r["alert_at"] else "") + "</td>"
             '<td class="cell-wait">' + since + "</td>"
             '<td class="cell-wait">' + viewed + "</td>"
             '<td class="cell-wait">' + due + "</td>"
@@ -331,6 +333,9 @@ def dashboard(conn, **kw) -> str:
             '<th scope="col" data-sort="num" class="ta-r">Score</th>'
             '<th scope="col" data-sort="num" class="ta-r">Holds</th>'
             '<th scope="col">Hold detail</th>'
+            '<th scope="col" data-sort="text">Alert came in (UTC)'
+            + help_mark("When the case's current alert - its most recent open hold - was "
+                        "placed. Blank when nothing is open.") + "</th>"
             '<th scope="col" data-sort="text">Waiting on customer since (UTC)'
             + help_mark("Counted from the first request, and never reset by a new upload. "
                         "Shown only while the customer owes an item.") + "</th>"
@@ -570,6 +575,26 @@ def _demo_panel(conn, case_id, reviewer="analyst.demo") -> str:
                 "<h3>Demo scenario</h3>" + control, "info", "Demo case")
 
 
+def _milestones(conn, case_id) -> str:
+    """The key moments in plain words, above the full audit list. Scheduled
+    items that have not happened yet are drawn dashed."""
+    items = []
+    for m in data.case_milestones(conn, case_id):
+        when = (e(m["when"].replace("T", " ").rstrip("Z") + (" UTC" if "T" in m["when"]
+                                                              else " (UTC)"))
+                if m["when"] else "")
+        items.append('<li class="ms' + (" ms--future" if m["future"] else "") + '">'
+                     '<span class="ms__when">' + when + "</span>"
+                     '<span class="ms__title">' + e(m["title"]) + "</span>"
+                     + ('<span class="ms__detail">' + e(m["detail"]) + "</span>"
+                        if m["detail"] else "") + "</li>")
+    return ('<section class="panel"><h2>Case timeline'
+            + help_mark("Key moments in plain words, read from the audit trail below. "
+                        "Dashed items are scheduled or awaited and have not happened yet.")
+            + '</h2><ol class="milestones">' + "".join(items) + "</ol>"
+            '<p class="foot">All times UTC.</p></section>')
+
+
 def _tab_timeline(conn, case_id, **kw):
     events = data.audit_trail(conn, case_id)
     rows = [[idtag(ev["event_id"]),
@@ -580,7 +605,7 @@ def _tab_timeline(conn, case_id, **kw):
              + cell(ev["payload_summary"]) + "</span>",
              '<span class="type">' + e(ev["model_or_prompt_version"] or "") + "</span>"]
             for ev in events]
-    return ("<h2>Audit trail</h2>"
+    return (_milestones(conn, case_id) + "<h2>Audit trail</h2>"
             '<p class="count-line">' + str(len(events)) + " events, oldest first</p>"
             + table(["Event", "When", "Actor", "Action", "Detail", "Version"], rows,
                     "No audit events."))

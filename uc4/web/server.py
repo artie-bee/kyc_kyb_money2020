@@ -216,6 +216,10 @@ class Handler(BaseHTTPRequestHandler):
                             + "#" + section)
                     if tab not in render.TABS:
                         tab = "Timeline"
+                    # Opening the case detail page - and only this page - records
+                    # the first open of each alert by someone who may act on it.
+                    if self.command == "GET":
+                        data.record_alert_opened(conn, case_id, reviewer, role)
                     body = render.case_detail(conn, case_id, tab=tab, role=role,
                                               reviewer=reviewer)
                     title, active = case_id, "Case detail"

@@ -10,6 +10,7 @@ the rules, and the second one is always the one that is wrong.
 tests/test_app.py scans this package for SQL writes and fails if it finds any.
 """
 
+import json
 import re
 import sys
 from datetime import date, datetime, timezone
@@ -130,6 +131,10 @@ def dashboard(conn) -> list[dict]:
             "ageing_days": ageing_days(case["created_at"]),
             # None unless the customer owes an item on an open case
             "waiting": communication.waiting_timing(conn, case["case_id"], kb()),
+            # when the current alert came in: the most recent open hold's placing
+            "alert_at": conn.execute(
+                "SELECT MAX(placed_at) FROM case_hold WHERE case_id = ?"
+                " AND released_at IS NULL", (case["case_id"],)).fetchone()[0] or "",
         })
     return out
 
@@ -463,6 +468,107 @@ def follow_up(conn, case_id: str) -> dict:
 
 DELIVERY_LABEL = communication.DELIVERY_LABEL
 CLOSED_WORD = {"approved": "approved", "rejected": "rejected"}
+
+
+_OPENED = re.compile(r"^(HLD-\d+) opened by (.+?) \((\w+)\) (\d+) min after the alert")
+_UPLOADED = re.compile(r'^(".*?(?<!\\)") received through the customer portal for (CHK-\d+) '
+                       r"\((\w+)\)")
+_CLOSED_TO = re.compile(r"case -> (approved|rejected|closed_withdrawn)")
+CLOSED_AS = {"approved": "approved", "rejected": "rejected",
+             "closed_withdrawn": "withdrawn"}
+
+
+def case_milestones(conn, case_id: str) -> list[dict]:
+    """The case's key moments in plain words, oldest first, read from the audit
+    trail (and the hold, outbox and follow-up records it points at). Each is
+    {when, title, detail, future}; scheduled items that have not happened yet
+    come last with future=True. Nothing is stored for this."""
+    hold_rows = {r["hold_id"]: r for r in conn.execute(
+        "SELECT * FROM case_hold WHERE case_id = ?", (case_id,))}
+    follow = communication.follow_up(conn, case_id, kb())
+    requests = {r["communication_id"]: r for r in follow["requests"]}
+    sent = {r["communication_id"]: r for r in conn.execute(
+        "SELECT c.communication_id, c.situation, o.sent_at FROM outbox o JOIN communication c"
+        " USING (communication_id) WHERE o.case_id = ? AND o.audience = 'applicant'",
+        (case_id,))}
+    events = conn.execute("SELECT * FROM audit_event WHERE case_id = ? ORDER BY event_id",
+                          (case_id,)).fetchall()
+    out, viewed = [], set()
+
+    def add(when, title, detail=""):
+        out.append({"when": when, "title": title, "detail": detail, "future": False})
+
+    for i, ev in enumerate(events):
+        action, text, when = ev["action"], ev["payload_summary"], ev["timestamp"]
+        if action == "case_created":
+            add(when, "Application received")
+        elif action == "case_hold_placed":
+            hold = hold_rows.get(text.split(" ", 1)[0])
+            if hold is None:
+                continue
+            # Step 3 lifts and re-places its own hold each time it re-runs; the
+            # same reason put back at the moment it was lifted is one alert.
+            if any(h["reason"] == hold["reason"] and h["released_at"] == hold["placed_at"]
+                   and h["hold_id"] != hold["hold_id"] for h in hold_rows.values()):
+                continue
+            add(hold["placed_at"], "Alert",
+                hold["reason"].split(": ", 1)[-1] + " (for " + hold["owner"] + ")")
+        elif action == "alert_opened":
+            m = _OPENED.match(text)
+            if m:
+                add(when, "Opened by " + m.group(2),
+                    m.group(4) + " min after the alert (" + m.group(3) + ")")
+        elif action == "communication_drafted":
+            comm = sent.get(text.split(" ", 1)[0])
+            if comm is None:
+                continue
+            if comm["situation"] in communication.REQUEST_SITUATIONS:
+                items = requests.get(comm["communication_id"], {}).get("documents", [])
+                add(comm["sent_at"], "Request sent to customer",
+                    ", ".join(d["label"] for d in items))
+            elif comm["situation"] == communication.REMINDER:
+                add(comm["sent_at"], "Reminder sent")
+            elif comm["situation"] == communication.NUDGE:
+                add(comm["sent_at"], "Nudge sent", "the request had not been viewed")
+        elif action == "message_viewed":
+            first = [c for c in re.findall(r"COM-\d+", text)
+                     if c in requests and c not in viewed]
+            if first:
+                viewed.update(first)
+                add(when, "Viewed by customer", ", ".join(first))
+        elif action == "document_uploaded":
+            m = _UPLOADED.match(text)
+            if m:
+                nxt = events[i + 1: i + 4]
+                replaced = any(e2["action"] == "document_superseded"
+                               and m.group(2) in e2["payload_summary"] for e2 in nxt)
+                add(when, "Replacement uploaded" if replaced else "Document uploaded",
+                    m.group(3).replace("_", " ") + " (" + json.loads(m.group(1)) + ")")
+        elif action == "human_decision_recorded":
+            decided = re.search(r"-> (\w+)", text)
+            add(when, "Decision recorded",
+                (decided.group(1) if decided else "") + " by " + ev["actor_id"]
+                + " (" + ev["actor_type"] + ")")
+        elif action == "case_closed_no_response":
+            add(when, "Case closed", "no response from the customer")
+        elif action == "decision_completed":
+            closed = _CLOSED_TO.search(text)
+            if closed:
+                add(when, "Case closed", CLOSED_AS[closed.group(1)])
+
+    # What has not happened yet, dashed until it does.
+    future = []
+    latest = next(reversed(follow["requests"]), None) if follow["requests"] else None
+    if latest and not latest["viewed_at"] and latest["status"] != "Closed":
+        future.append((None, "Not viewed yet", latest["communication_id"]))
+    timing = communication.waiting_timing(conn, case_id, kb())
+    if timing and timing["next_due"]:
+        future.append((timing["next_due"], ("Reminder" if timing["next_kind"] == "reminder"
+                                            else "Nudge") + " due " + timing["next_due"], ""))
+    if follow["closes_on"]:
+        future.append((follow["closes_on"], "Closes if no reply " + follow["closes_on"], ""))
+    out += [{"when": w, "title": t, "detail": d, "future": True} for w, t, d in future]
+    return out
 
 
 def customer_summary(conn, case_id: str) -> dict:
@@ -1058,6 +1164,29 @@ def why_here(conn, case_id: str, role: str) -> list[dict]:
                     if action else None,
                     "permitted": _may(conn, case_id, role, hold, action)})
     return out
+
+
+def record_alert_opened(conn, case_id: str, who: str, role: str) -> list[str]:
+    """The case detail page was opened. For each open hold (alert) that this
+    person may act on - the same test the "why is this case here" panel uses,
+    which for a decision is decision.check_permitted - and that nobody has
+    opened yet, audit "alert_opened". Once per alert: a later open records
+    nothing, and a new hold is a new alert. A record only; nothing else moves.
+    Returns the hold ids recorded."""
+    if (case(conn, case_id)["case"]["status"] in CLOSED_STATUSES
+            or not (who or "").strip()):
+        return []
+    seen = {m for (p,) in conn.execute(
+        "SELECT payload_summary FROM audit_event WHERE case_id = ? AND action = 'alert_opened'",
+        (case_id,)) for m in re.findall(r"^HLD-\d+", p)}
+    done = []
+    for hold in holds.open_holds(conn, case_id):
+        if hold.hold_id not in seen and _may(conn, case_id, role, hold, _action_for(hold)):
+            holds.record_opened(conn, hold, who, role, kb())
+            done.append(hold.hold_id)
+    if done:
+        conn.commit()
+    return done
 
 
 def _actionable(conn, case_id: str, role: str) -> list[str]:

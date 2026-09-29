@@ -103,6 +103,11 @@ def stamp(when: datetime | None = None) -> str:
     return (when or _current.now()).astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
+def parse(timestamp: str) -> datetime:
+    """A stored stamp ("2026-09-28T09:00:00Z") back into an aware datetime."""
+    return datetime.fromisoformat(timestamp.replace("Z", "+00:00"))
+
+
 def days_since(timestamp: str | None) -> int:
     """Whole days from a stored timestamp to now, on the clock in force."""
     try:
