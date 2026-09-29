@@ -6,6 +6,7 @@ Only the tables used by the first two steps are created here; later steps add
 their own tables with the same column names as the ER diagram.
 """
 
+import re
 import sqlite3
 from pathlib import Path
 
@@ -231,6 +232,12 @@ CREATE TABLE IF NOT EXISTS portal_token (
     -- after this the link stops working; a token with none is treated as expired
     expires_at TEXT
 );
+-- The highest number ever issued under each id prefix. It only goes up, so an
+-- id is never handed out twice - not after a row is deleted, and (carried
+-- across by app/data.reset_demo) not after the database is rebuilt.
+CREATE TABLE IF NOT EXISTS id_sequence (
+    prefix TEXT PRIMARY KEY, last_issued INTEGER NOT NULL
+);
 -- Section 12: audit history must never be modified or deleted.
 CREATE TRIGGER IF NOT EXISTS audit_no_update BEFORE UPDATE ON audit_event
 BEGIN SELECT RAISE(ABORT, 'audit_event is append-only'); END;
@@ -311,14 +318,43 @@ def next_id(conn: sqlite3.Connection, table: str, prefix: str | None = None) -> 
     col, default = ID_PREFIX[table]
     prefix = prefix or default
     width = 6 if table in ("audit_event", "checklist_item") else 4
-    # One past the highest number already used under this prefix. Not a row
-    # count: a re-run of verification replaces rows, and a count that drops
-    # would hand out an id another case already holds. Each case series (the
+    # One past the highest number EVER issued under this prefix: the larger of
+    # what the table holds now and what id_sequence remembers. Never a row
+    # count, and never just the rows still present - a deleted row's id, or one
+    # from before Reset demo, is not handed out again. Each case series (the
     # dataset's WAL-ONB-, the portal's WAL-DEMO-) numbers itself.
     (highest,) = conn.execute(
         f"SELECT MAX(CAST(SUBSTR({col}, ?) AS INTEGER)) FROM {table} WHERE {col} LIKE ?",
         (len(prefix) + 1, prefix + "%")).fetchone()
-    return f"{prefix}{(highest or 0) + 1:0{width}d}"
+    issued = conn.execute("SELECT last_issued FROM id_sequence WHERE prefix = ?",
+                          (prefix,)).fetchone()
+    n = max(highest or 0, issued[0] if issued else 0) + 1
+    conn.execute("INSERT INTO id_sequence VALUES (?, ?) ON CONFLICT(prefix)"
+                 " DO UPDATE SET last_issued = excluded.last_issued", (prefix, n))
+    return f"{prefix}{n:0{width}d}"
+
+
+_NUMBERED = re.compile(r"^(.*?)(\d+)$")
+
+
+def id_floors(conn) -> dict:
+    """{prefix: highest number ever issued}, from id_sequence and from every
+    id actually on file - what a rebuilt database must never go below."""
+    floors = {p: n for p, n in conn.execute("SELECT prefix, last_issued FROM id_sequence")}
+    for table, (col, _) in ID_PREFIX.items():
+        for (value,) in conn.execute(f"SELECT {col} FROM {table}"):
+            m = _NUMBERED.match(value or "")
+            if m:
+                floors[m.group(1)] = max(floors.get(m.group(1), 0), int(m.group(2)))
+    return floors
+
+
+def raise_floors(conn, floors: dict) -> None:
+    """Make every later id under each prefix start above the given number. Only
+    ever raises a counter; never lowers one."""
+    for prefix, n in floors.items():
+        conn.execute("INSERT INTO id_sequence VALUES (?, ?) ON CONFLICT(prefix) DO UPDATE"
+                     " SET last_issued = MAX(last_issued, excluded.last_issued)", (prefix, n))
 
 
 def audit(conn, case_id, actor_type, actor_id, action, payload_summary, version=None):

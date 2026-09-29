@@ -384,6 +384,10 @@ DB_TABLES = {
     "outbox": [
         "outbox_id", "communication_id", "case_id", "audience", "body", "sent_at",
     ],
+    # the highest number ever issued per id prefix; only goes up, so no id repeats
+    "id_sequence": [
+        "prefix", "last_issued",
+    ],
     # customer portal access; only the hash of each token is stored
     "portal_token": [
         "token_hash", "case_id", "issued_by", "issued_at", "revoked_at", "expires_at",

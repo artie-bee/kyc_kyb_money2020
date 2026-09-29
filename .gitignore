@@ -2,6 +2,8 @@ __pycache__/
 *.pyc
 *.zip
 onboarding.db
+# the id floors kept beside a database, so ids are never reused after a rebuild
+*.ids.json
 exports/
 sample_documents/
 # eval_report.md is committed deliberately: every document in this project

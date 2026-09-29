@@ -59,19 +59,57 @@ def reset_demo(path: Path = DB_PATH) -> None:
 
     Runs every case as far as the pipeline can take it alone and stops, so the
     releases and decisions are left for the presenter to make on screen.
+
+    No id is ever issued twice. The scripted cases are rebuilt with their same
+    fixed ids - the same rows, rebuilt - and then every counter is raised to the
+    highest number ever issued before, so the next portal case, audit event or
+    hold continues the sequence (WAL-DEMO-0001 never comes back). The floors
+    are kept beside the database, where rebuilding it cannot lose them.
     """
+    path = Path(path)
+    floors = _load_floors(path)
     if path.exists():
+        old = db.connect(path)
+        floors = _merge(floors, db.id_floors(old))
+        old.close()
         path.unlink()
     # Rebuilding the database drops every WAL-DEMO- case with it. Their saved
     # applications and every file uploaded through the portal go too - but only
     # for the demo's own database, never for a copy a test is resetting.
-    if Path(path).resolve() == DB_PATH.resolve():
+    if path.resolve() == DB_PATH.resolve():
         _clear(PORTAL_APPLICATIONS, "*.json")
         _clear(UPLOADS, "*/*")
     conn = db.connect(path)
     run_demo(conn, verbose=False, stop_before_human_actions=True)
+    db.raise_floors(conn, floors)
     conn.commit()
+    save_floors(conn, path)
     conn.close()
+
+
+def _floors_file(path: Path) -> Path:
+    """Beside the database, never inside it: onboarding.db -> onboarding.ids.json."""
+    return Path(path).with_suffix(".ids.json")
+
+
+def _load_floors(path: Path) -> dict:
+    try:
+        return {k: int(v) for k, v in
+                json.loads(_floors_file(path).read_text(encoding="utf-8")).items()}
+    except (OSError, ValueError):
+        return {}
+
+
+def _merge(a: dict, b: dict) -> dict:
+    return {k: max(a.get(k, 0), b.get(k, 0)) for k in {*a, *b}}
+
+
+def save_floors(conn, path: Path) -> None:
+    """Record the highest id ever issued per prefix beside the database, so the
+    next rebuild continues above it."""
+    merged = _merge(_load_floors(path), db.id_floors(conn))
+    _floors_file(path).write_text(json.dumps(dict(sorted(merged.items())), indent=1),
+                                  encoding="utf-8")
 
 
 def _clear(folder: Path, pattern: str) -> None:
