@@ -171,16 +171,44 @@ def test_tile_text_meets_wcag_aa(theme, role):
     assert ratio >= 4.5, f"{theme} {role}: {ratio:.2f}"
 
 
+THEMES = {":root": "#ffffff", ':root[data-theme="dark"]': "#171c22"}    # the surface
+ROLES = ("analyst", "compliance", "customer", "ready", "neutral")
+
+
+@pytest.mark.parametrize("theme", THEMES)
+@pytest.mark.parametrize("role", ROLES)
+def test_badge_text_meets_wcag_aa_on_its_background(theme, role):
+    block = _block(theme)
+    ratio = contrast(_var(block, f"role-{role}-ink"), _var(block, f"role-{role}-bg"))
+    assert ratio >= 4.5, f"{theme} {role} badge: {ratio:.2f}"
+
+
+@pytest.mark.parametrize("theme", THEMES)
+@pytest.mark.parametrize("mark", [*ROLES, "analyst-2"])
+def test_chart_marks_stand_out_from_the_page(theme, mark):
+    """WCAG 1.4.11: a bar or slice that carries meaning needs 3:1 against its
+    background - and every chart shows its numbers as well."""
+    ratio = contrast(_var(_block(theme), f"role-{mark}"), THEMES[theme])
+    assert ratio >= 3, f"{theme} {mark}: {ratio:.2f}"
+
+
+def test_high_and_medium_are_told_apart():
+    """Both are the analyst's amber family, but not the same colour."""
+    for theme in THEMES:
+        block = _block(theme)
+        assert _var(block, "role-analyst") != _var(block, "role-analyst-2")
+
+
 def test_the_colour_language_is_defined_once_for_both_themes():
     light, dark = _block(":root"), _block(':root[data-theme="dark"]')
-    for role in ("analyst", "compliance", "customer", "ready", "neutral"):
-        for part in ("", "-bg", "-line"):
+    for role in ROLES:
+        for part in ("", "-ink", "-bg", "-line"):
             assert re.search(r"--role-" + role + part + r":\s*#", light), (role, part)
             assert re.search(r"--role-" + role + part + r":\s*#", dark), (role, part)
-    # the badge tones are those same roles, not a second palette
+    # the badge tones are those same roles' text shades, not a second palette
     for tone, role in (("warn", "analyst"), ("bad", "compliance"), ("info", "customer"),
                        ("ok", "ready")):
-        assert f"--{tone}:var(--role-{role})" in light
+        assert f"--{tone}:var(--role-{role}-ink)" in light
     assert render.OWNER_TONE == {"analyst": "warn", "compliance": "bad", "customer": "info",
                                  "system": "neutral"}
     assert render.BAND_TONE["critical"] == "bad" and render.BAND_TONE["low"] == "ok"

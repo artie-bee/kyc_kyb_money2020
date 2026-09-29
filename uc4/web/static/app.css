@@ -23,28 +23,38 @@
 
   /* The colour language - one meaning everywhere: tiles, charts and badges.
      amber = analyst, red = compliance / critical, blue = customer,
-     green = ready / low, grey = not scored / system. Each role has an ink
-     (text and chart marks), a soft background, a line, and a tile pair (solid
-     background + text) that meets WCAG AA. Defined here once, light and dark. */
-  --role-analyst:#8a6116;    --role-analyst-2:#b98a2e;
-  --role-analyst-bg:#faf2e2; --role-analyst-line:#e0c894;
-  --role-compliance:#963232; --role-compliance-bg:#faecec; --role-compliance-line:#e0b0b0;
-  --role-customer:#2c5fa8;   --role-customer-bg:#eaf0fa;   --role-customer-line:#b0c6e4;
-  --role-ready:#2f6f4f;      --role-ready-bg:#eaf3ee;      --role-ready-line:#a9ccb9;
-  --role-neutral:#617082;    --role-neutral-bg:#eef1f4;    --role-neutral-line:#c3ccd6;
-  --tile-analyst-bg:#8a6116;    --tile-analyst-fg:#ffffff;
-  --tile-compliance-bg:#963232; --tile-compliance-fg:#ffffff;
-  --tile-customer-bg:#2c5fa8;   --tile-customer-fg:#ffffff;
-  --tile-ready-bg:#2f6f4f;      --tile-ready-fg:#ffffff;
+     green = ready / low, grey = not scored / system. Each role has:
+       --role-X        a vivid mark for bars, slices and strips (3:1 or more
+                       against the page, WCAG 1.4.11);
+       --role-X-ink    text on --role-X-bg, for badges (4.5:1 or more, AA);
+       --role-X-bg / -line   the badge's soft background and border;
+       --tile-X-bg / -fg     a solid tile and its text (4.5:1 or more, AA).
+     Medium risk (--role-analyst-2) is a darker gold beside high's amber.
+     Defined here once, light and dark; tests/test_dashboard_redesign.py
+     checks every pair. */
+  --role-analyst:#d97706;    --role-analyst-2:#a16207;   --role-analyst-ink:#92400e;
+  --role-analyst-bg:#fef6e4; --role-analyst-line:#f3cf85;
+  --role-compliance:#dc2626; --role-compliance-ink:#991b1b;
+  --role-compliance-bg:#fef0f0; --role-compliance-line:#f5b4b4;
+  --role-customer:#2563eb;   --role-customer-ink:#1e40af;
+  --role-customer-bg:#eef4ff; --role-customer-line:#b3c9f5;
+  --role-ready:#16a34a;      --role-ready-ink:#166534;
+  --role-ready-bg:#eefbf2;   --role-ready-line:#a6dcb8;
+  --role-neutral:#64748b;    --role-neutral-ink:#475569;
+  --role-neutral-bg:#f1f5f9; --role-neutral-line:#cbd5e1;
+  --tile-analyst-bg:#b45309;    --tile-analyst-fg:#ffffff;
+  --tile-compliance-bg:#b91c1c; --tile-compliance-fg:#ffffff;
+  --tile-customer-bg:#1d4ed8;   --tile-customer-fg:#ffffff;
+  --tile-ready-bg:#15803d;      --tile-ready-fg:#ffffff;
 
   /* The badge tones are the roles under their older names. */
-  --ok:var(--role-ready);        --ok-bg:var(--role-ready-bg);
+  --ok:var(--role-ready-ink);        --ok-bg:var(--role-ready-bg);
   --ok-line:var(--role-ready-line);
-  --info:var(--role-customer);   --info-bg:var(--role-customer-bg);
+  --info:var(--role-customer-ink);   --info-bg:var(--role-customer-bg);
   --info-line:var(--role-customer-line);
-  --warn:var(--role-analyst);    --warn-bg:var(--role-analyst-bg);
+  --warn:var(--role-analyst-ink);    --warn-bg:var(--role-analyst-bg);
   --warn-line:var(--role-analyst-line);
-  --bad:var(--role-compliance);  --bad-bg:var(--role-compliance-bg);
+  --bad:var(--role-compliance-ink);  --bad-bg:var(--role-compliance-bg);
   --bad-line:var(--role-compliance-line);
 
   --r:5px;
@@ -59,16 +69,20 @@
   --bg:#11151a; --surface:#171c22; --surface-2:#1c2229;
   --line:#2a323b; --line-soft:#222931;
   --accent:#7aa6e0; --accent-soft:#1b2534; --accent-line:#2d4363;
-  --role-analyst:#d9b167;    --role-analyst-2:#a8864a;
-  --role-analyst-bg:#2a2317; --role-analyst-line:#59492a;
-  --role-compliance:#e08a8a; --role-compliance-bg:#2b1a1a; --role-compliance-line:#5c3434;
-  --role-customer:#7aa6e0;   --role-customer-bg:#161f2d;   --role-customer-line:#2d4363;
-  --role-ready:#79c298;      --role-ready-bg:#16241d;      --role-ready-line:#2f5442;
-  --role-neutral:#93a0b0;    --role-neutral-bg:#1c2229;    --role-neutral-line:#3a444f;
-  --tile-analyst-bg:#d9b167;    --tile-analyst-fg:#151a20;
-  --tile-compliance-bg:#e08a8a; --tile-compliance-fg:#151a20;
-  --tile-customer-bg:#7aa6e0;   --tile-customer-fg:#151a20;
-  --tile-ready-bg:#79c298;      --tile-ready-fg:#151a20;
+  --role-analyst:#fbbf24;    --role-analyst-2:#ca8a04;   --role-analyst-ink:#fcd34d;
+  --role-analyst-bg:#2a2317; --role-analyst-line:#6b5423;
+  --role-compliance:#f87171; --role-compliance-ink:#fca5a5;
+  --role-compliance-bg:#2b1a1a; --role-compliance-line:#6b3434;
+  --role-customer:#60a5fa;   --role-customer-ink:#93c5fd;
+  --role-customer-bg:#161f2d; --role-customer-line:#2f4a70;
+  --role-ready:#4ade80;      --role-ready-ink:#86efac;
+  --role-ready-bg:#15241b;   --role-ready-line:#2d5a3d;
+  --role-neutral:#94a3b8;    --role-neutral-ink:#cbd5e1;
+  --role-neutral-bg:#1c2229; --role-neutral-line:#3a444f;
+  --tile-analyst-bg:#f59e0b;    --tile-analyst-fg:#111827;
+  --tile-compliance-bg:#f87171; --tile-compliance-fg:#111827;
+  --tile-customer-bg:#60a5fa;   --tile-customer-fg:#111827;
+  --tile-ready-bg:#4ade80;      --tile-ready-fg:#111827;
 }
 
 * { box-sizing:border-box; }
@@ -412,6 +426,8 @@ tr.rowlink a { text-decoration:none; }
 .chip--info { color:var(--info); background:var(--info-bg); border-color:var(--info-line); }
 .chip--warn { color:var(--warn); background:var(--warn-bg); border-color:var(--warn-line); }
 .chip--bad  { color:var(--bad);  background:var(--bad-bg);  border-color:var(--bad-line); }
+.chip--neutral { color:var(--role-neutral-ink); background:var(--role-neutral-bg);
+                 border-color:var(--role-neutral-line); }
 
 /* ---------- banners ----------------------------------------------------- */
 
