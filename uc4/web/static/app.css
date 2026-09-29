@@ -19,7 +19,7 @@
   --bg:var(--n-2); --surface:var(--n-0); --surface-2:var(--n-1);
   --line:var(--n-4); --line-soft:var(--n-3);
 
-  --accent:#2c5fa8; --accent-soft:#eaf0fa; --accent-line:#b0c6e4;
+  --accent:#2d6a4f; --accent-soft:#e9f3ee; --accent-line:#b5d3c3;
 
   /* The colour language - one meaning everywhere: tiles, charts and badges.
      amber = analyst, red = compliance / critical, blue = customer,
@@ -28,24 +28,24 @@
                        against the page, WCAG 1.4.11);
        --role-X-ink    text on --role-X-bg, for badges (4.5:1 or more, AA);
        --role-X-bg / -line   the badge's soft background and border;
-       --tile-X-bg / -fg     a solid tile and its text (4.5:1 or more, AA).
+       --tile-X-bg / -fg     a tile's card and its number (4.5:1 or more, AA).
      Medium risk (--role-analyst-2) is a darker gold beside high's amber.
      Defined here once, light and dark; tests/test_dashboard_redesign.py
      checks every pair. */
-  --role-analyst:#d97706;    --role-analyst-2:#a16207;   --role-analyst-ink:#92400e;
-  --role-analyst-bg:#fef6e4; --role-analyst-line:#f3cf85;
-  --role-compliance:#dc2626; --role-compliance-ink:#991b1b;
-  --role-compliance-bg:#fef0f0; --role-compliance-line:#f5b4b4;
-  --role-customer:#2563eb;   --role-customer-ink:#1e40af;
-  --role-customer-bg:#eef4ff; --role-customer-line:#b3c9f5;
-  --role-ready:#16a34a;      --role-ready-ink:#166534;
-  --role-ready-bg:#eefbf2;   --role-ready-line:#a6dcb8;
-  --role-neutral:#64748b;    --role-neutral-ink:#475569;
-  --role-neutral-bg:#f1f5f9; --role-neutral-line:#cbd5e1;
-  --tile-analyst-bg:#b45309;    --tile-analyst-fg:#ffffff;
-  --tile-compliance-bg:#b91c1c; --tile-compliance-fg:#ffffff;
-  --tile-customer-bg:#1d4ed8;   --tile-customer-fg:#ffffff;
-  --tile-ready-bg:#15803d;      --tile-ready-fg:#ffffff;
+  --role-analyst:#b7812a;    --role-analyst-2:#8f7a3e;   --role-analyst-ink:#7a5412;
+  --role-analyst-bg:#fbf6ea; --role-analyst-line:#e9d9b3;
+  --role-compliance:#b5473a; --role-compliance-ink:#8f2f25;
+  --role-compliance-bg:#fbf0ee; --role-compliance-line:#ebc3bd;
+  --role-customer:#4a6f96;   --role-customer-ink:#2f4e70;
+  --role-customer-bg:#eff3f8; --role-customer-line:#c5d3e3;
+  --role-ready:#3d8a63;      --role-ready-ink:#235c40;
+  --role-ready-bg:#eef6f1;   --role-ready-line:#bcd9c8;
+  --role-neutral:#7d8995;    --role-neutral-ink:#4f5b67;
+  --role-neutral-bg:#f2f4f6; --role-neutral-line:#d3d9df;
+  --tile-analyst-bg:#ffffff;    --tile-analyst-fg:#7a5412;
+  --tile-compliance-bg:#ffffff; --tile-compliance-fg:#8f2f25;
+  --tile-customer-bg:#ffffff;   --tile-customer-fg:#2f4e70;
+  --tile-ready-bg:#ffffff;      --tile-ready-fg:#235c40;
 
   /* The badge tones are the roles under their older names. */
   --ok:var(--role-ready-ink);        --ok-bg:var(--role-ready-bg);
@@ -68,21 +68,21 @@
   --fg:#dbe2ea; --fg-mute:#93a0b0; --fg-faint:#6d7a8a;
   --bg:#11151a; --surface:#171c22; --surface-2:#1c2229;
   --line:#2a323b; --line-soft:#222931;
-  --accent:#7aa6e0; --accent-soft:#1b2534; --accent-line:#2d4363;
-  --role-analyst:#fbbf24;    --role-analyst-2:#ca8a04;   --role-analyst-ink:#fcd34d;
-  --role-analyst-bg:#2a2317; --role-analyst-line:#6b5423;
-  --role-compliance:#f87171; --role-compliance-ink:#fca5a5;
-  --role-compliance-bg:#2b1a1a; --role-compliance-line:#6b3434;
-  --role-customer:#60a5fa;   --role-customer-ink:#93c5fd;
-  --role-customer-bg:#161f2d; --role-customer-line:#2f4a70;
-  --role-ready:#4ade80;      --role-ready-ink:#86efac;
-  --role-ready-bg:#15241b;   --role-ready-line:#2d5a3d;
-  --role-neutral:#94a3b8;    --role-neutral-ink:#cbd5e1;
+  --accent:#7fc4a0; --accent-soft:#16241d; --accent-line:#2f5442;
+  --role-analyst:#d4a55a;    --role-analyst-2:#a8925a;   --role-analyst-ink:#e6c486;
+  --role-analyst-bg:#262117; --role-analyst-line:#5a4a2c;
+  --role-compliance:#d98579; --role-compliance-ink:#eba69d;
+  --role-compliance-bg:#2a1c1a; --role-compliance-line:#5e3833;
+  --role-customer:#86a6c9;   --role-customer-ink:#aec6e0;
+  --role-customer-bg:#1a212b; --role-customer-line:#34465c;
+  --role-ready:#6fbf94;      --role-ready-ink:#9fd8b8;
+  --role-ready-bg:#172620;   --role-ready-line:#2f5442;
+  --role-neutral:#8b97a4;    --role-neutral-ink:#c3ccd6;
   --role-neutral-bg:#1c2229; --role-neutral-line:#3a444f;
-  --tile-analyst-bg:#f59e0b;    --tile-analyst-fg:#111827;
-  --tile-compliance-bg:#f87171; --tile-compliance-fg:#111827;
-  --tile-customer-bg:#60a5fa;   --tile-customer-fg:#111827;
-  --tile-ready-bg:#4ade80;      --tile-ready-fg:#111827;
+  --tile-analyst-bg:#1c2229;    --tile-analyst-fg:#e6c486;
+  --tile-compliance-bg:#1c2229; --tile-compliance-fg:#eba69d;
+  --tile-customer-bg:#1c2229;   --tile-customer-fg:#aec6e0;
+  --tile-ready-bg:#1c2229;      --tile-ready-fg:#9fd8b8;
 }
 
 * { box-sizing:border-box; }
@@ -184,16 +184,21 @@ a { color:var(--accent); }
 .tiles { display:grid; grid-template-columns:repeat(4, minmax(0,1fr)); gap:12px;
          margin:4px 0 6px; }
 .tile { display:flex; flex-direction:column; gap:1px; padding:14px 16px 12px;
-        border-radius:var(--r); text-decoration:none; transition:filter .12s, transform .12s; }
-.tile:hover { filter:brightness(1.07); }
-.tile--on { outline:3px solid var(--fg); outline-offset:2px; }
-.tile__v { font-size:34px; font-weight:680; line-height:1.05; letter-spacing:-.02em; }
-.tile__k { font-size:13px; font-weight:620; }
-.tile__sub { font-size:12px; opacity:.92; }
-.tile--analyst { background:var(--tile-analyst-bg); color:var(--tile-analyst-fg); }
-.tile--compliance { background:var(--tile-compliance-bg); color:var(--tile-compliance-fg); }
-.tile--customer { background:var(--tile-customer-bg); color:var(--tile-customer-fg); }
-.tile--ready { background:var(--tile-ready-bg); color:var(--tile-ready-fg); }
+        border:1px solid var(--line); border-left-width:4px; border-radius:var(--r);
+        text-decoration:none; color:var(--fg-mute); transition:border-color .12s, background .12s; }
+.tile:hover { background:var(--surface-2); }
+.tile--on { outline:2px solid var(--accent); outline-offset:2px; }
+.tile__v { font-size:32px; font-weight:650; line-height:1.05; letter-spacing:-.02em; }
+.tile__k { font-size:13px; font-weight:600; color:var(--fg); }
+.tile__sub { font-size:12px; color:var(--fg-mute); }
+.tile--analyst { background:var(--tile-analyst-bg); border-left-color:var(--role-analyst); }
+.tile--analyst .tile__v { color:var(--tile-analyst-fg); }
+.tile--compliance { background:var(--tile-compliance-bg); border-left-color:var(--role-compliance); }
+.tile--compliance .tile__v { color:var(--tile-compliance-fg); }
+.tile--customer { background:var(--tile-customer-bg); border-left-color:var(--role-customer); }
+.tile--customer .tile__v { color:var(--tile-customer-fg); }
+.tile--ready { background:var(--tile-ready-bg); border-left-color:var(--role-ready); }
+.tile--ready .tile__v { color:var(--tile-ready-fg); }
 .tiles__note { margin:0 0 14px; font-size:12.5px; color:var(--fg-mute); }
 
 .charts { display:grid; grid-template-columns:minmax(0,1.3fr) minmax(0,1fr); gap:12px;

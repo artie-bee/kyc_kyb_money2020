@@ -18,19 +18,19 @@
   --bg:var(--n-2); --surface:var(--n-0); --surface-2:var(--n-1);
   --line:var(--n-4); --line-soft:var(--n-3);
 
-  --accent:#2c5fa8; --accent-soft:#eaf0fa; --accent-line:#b0c6e4;
+  --accent:#2d6a4f; --accent-soft:#e9f3ee; --accent-line:#b5d3c3;
 
   /* The console's colour language (web/static/app.css), copied: amber =
      analyst, red = compliance, blue = customer, green = ready, grey = neutral.
      The tones below are those roles' text shades under their older names. */
-  --role-analyst:#d97706;    --role-analyst-ink:#92400e;
-  --role-analyst-bg:#fef6e4; --role-analyst-line:#f3cf85;
-  --role-compliance:#dc2626; --role-compliance-ink:#991b1b;
-  --role-compliance-bg:#fef0f0; --role-compliance-line:#f5b4b4;
-  --role-customer:#2563eb;   --role-customer-ink:#1e40af;
-  --role-customer-bg:#eef4ff; --role-customer-line:#b3c9f5;
-  --role-ready:#16a34a;      --role-ready-ink:#166534;
-  --role-ready-bg:#eefbf2;   --role-ready-line:#a6dcb8;
+  --role-analyst:#b7812a;    --role-analyst-ink:#7a5412;
+  --role-analyst-bg:#fbf6ea; --role-analyst-line:#e9d9b3;
+  --role-compliance:#b5473a;    --role-compliance-ink:#8f2f25;
+  --role-compliance-bg:#fbf0ee; --role-compliance-line:#ebc3bd;
+  --role-customer:#4a6f96;    --role-customer-ink:#2f4e70;
+  --role-customer-bg:#eff3f8; --role-customer-line:#c5d3e3;
+  --role-ready:#3d8a63;    --role-ready-ink:#235c40;
+  --role-ready-bg:#eef6f1; --role-ready-line:#bcd9c8;
   --ok:var(--role-ready-ink);        --ok-bg:var(--role-ready-bg);
   --ok-line:var(--role-ready-line);
   --info:var(--role-customer-ink);   --info-bg:var(--role-customer-bg);
@@ -51,30 +51,30 @@
     --fg:#dbe2ea; --fg-mute:#93a0b0; --fg-faint:#6d7a8a;
     --bg:#11151a; --surface:#171c22; --surface-2:#1c2229;
     --line:#2a323b; --line-soft:#222931;
-    --accent:#7aa6e0; --accent-soft:#1b2534; --accent-line:#2d4363;
-    --role-analyst:#fbbf24;    --role-analyst-ink:#fcd34d;
-    --role-analyst-bg:#2a2317; --role-analyst-line:#6b5423;
-    --role-compliance:#f87171; --role-compliance-ink:#fca5a5;
-    --role-compliance-bg:#2b1a1a; --role-compliance-line:#6b3434;
-    --role-customer:#60a5fa;   --role-customer-ink:#93c5fd;
-    --role-customer-bg:#161f2d; --role-customer-line:#2f4a70;
-    --role-ready:#4ade80;      --role-ready-ink:#86efac;
-    --role-ready-bg:#15241b;   --role-ready-line:#2d5a3d;
+    --accent:#7fc4a0; --accent-soft:#16241d; --accent-line:#2f5442;
+    --role-analyst:#d4a55a;    --role-analyst-ink:#e6c486;
+    --role-analyst-bg:#262117; --role-analyst-line:#5a4a2c;
+    --role-compliance:#d98579;    --role-compliance-ink:#eba69d;
+    --role-compliance-bg:#2a1c1a; --role-compliance-line:#5e3833;
+    --role-customer:#86a6c9;    --role-customer-ink:#aec6e0;
+    --role-customer-bg:#1a212b; --role-customer-line:#34465c;
+    --role-ready:#6fbf94;    --role-ready-ink:#9fd8b8;
+    --role-ready-bg:#172620; --role-ready-line:#2f5442;
   }
 }
 :root[data-theme="dark"] {
   --fg:#dbe2ea; --fg-mute:#93a0b0; --fg-faint:#6d7a8a;
   --bg:#11151a; --surface:#171c22; --surface-2:#1c2229;
   --line:#2a323b; --line-soft:#222931;
-  --accent:#7aa6e0; --accent-soft:#1b2534; --accent-line:#2d4363;
-  --role-analyst:#fbbf24;    --role-analyst-ink:#fcd34d;
-  --role-analyst-bg:#2a2317; --role-analyst-line:#6b5423;
-  --role-compliance:#f87171; --role-compliance-ink:#fca5a5;
-  --role-compliance-bg:#2b1a1a; --role-compliance-line:#6b3434;
-  --role-customer:#60a5fa;   --role-customer-ink:#93c5fd;
-  --role-customer-bg:#161f2d; --role-customer-line:#2f4a70;
-  --role-ready:#4ade80;      --role-ready-ink:#86efac;
-  --role-ready-bg:#15241b;   --role-ready-line:#2d5a3d;
+  --accent:#7fc4a0; --accent-soft:#16241d; --accent-line:#2f5442;
+  --role-analyst:#d4a55a;    --role-analyst-ink:#e6c486;
+  --role-analyst-bg:#262117; --role-analyst-line:#5a4a2c;
+  --role-compliance:#d98579;    --role-compliance-ink:#eba69d;
+  --role-compliance-bg:#2a1c1a; --role-compliance-line:#5e3833;
+  --role-customer:#86a6c9;    --role-customer-ink:#aec6e0;
+  --role-customer-bg:#1a212b; --role-customer-line:#34465c;
+  --role-ready:#6fbf94;    --role-ready-ink:#9fd8b8;
+  --role-ready-bg:#172620; --role-ready-line:#2f5442;
 }
 
 * { box-sizing:border-box; }
