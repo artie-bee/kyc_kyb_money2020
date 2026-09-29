@@ -927,7 +927,30 @@ def record_decision(conn, case_id, reviewer, reviewer_role, choice, reason_code,
     return result
 
 
+MANUAL_SITUATIONS_EXCLUDED = communication.OUTCOME_SITUATIONS
+
+
 def send_message(conn, case_id, situation, approver):
+    """A message an analyst sends by hand (Send a message). Outcome messages are
+    refused here - they go out with the decision or the automatic closure they
+    announce - and so is a reminder when the customer owes nothing, which would
+    otherwise ask them for "the outstanding documents" that do not exist."""
+    if not (situation or "").strip():
+        raise ValueError("Choose a situation first.")
+    if situation in MANUAL_SITUATIONS_EXCLUDED:
+        # The one exception: compliance approving the outcome message that a
+        # recorded decision withheld (a confirmed sanctions match) - the same
+        # message the decision announced, sent as its own approved act.
+        after = messages_after_decision(conn, case_id)
+        if not (after and after["withheld"] and not after["sent"]
+                and after["situation"] == situation):
+            raise ValueError(f"'{situation}' is not sent by hand: it goes out with the decision "
+                             "that it announces. Record the decision in the decision form "
+                             "instead.")
+    if situation == communication.REMINDER and not communication.owed_items(conn, case_id):
+        raise ValueError("Nothing is outstanding from this customer, so there is nothing to "
+                         "remind them about. Ask for a document first (Request another "
+                         "document on the Checklist tab), then send the reminder.")
     result = communication.send_required_message(conn, case_id, situation, kb(),
                                                  approver=approver)
     conn.commit()

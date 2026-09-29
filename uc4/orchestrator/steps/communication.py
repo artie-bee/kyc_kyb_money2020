@@ -38,6 +38,10 @@ ACTOR = "step.communication"
 # starts at the first of them (first_request_at) and never restarts.
 REQUEST_SITUATIONS = ("resubmission", "clarification", "missing_items")
 REMINDER = "reminder"
+# Outcome messages. They go out only with what they announce - a recorded
+# decision, or chase() closing a case for want of a reply - never by hand,
+# where a closure notice could reach a customer whose case is still open.
+OUTCOME_SITUATIONS = ("case_closed", "final_outcome_approved", "final_outcome_declined")
 # The optional early nudge on an unviewed request (kb/communication_schedule.csv).
 NUDGE = "unviewed_nudge"
 # What a send is, as far as the POC can say: written to the outbox table. There

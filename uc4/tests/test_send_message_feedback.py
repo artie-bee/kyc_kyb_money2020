@@ -92,7 +92,7 @@ def test_the_dropdown_and_list_say_which_situations_already_went(site):
     options = dict(re.findall(r'<option value="([a-z_]+)">([^<]+)</option>', section))
     assert "already sent" in options["resubmission"]
     assert "already sent" in options["status_update"]
-    assert "already sent" not in options["case_closed"]
+    assert "already sent" not in options["verification_delay"]
     listed = re.search(r'<p class="sentlist">(.*?)</p>', section, re.S).group(1)
     assert "resubmission" in listed and "status_update" in listed
     # a reload without the outcome in the address keeps the list, drops "Just sent"
@@ -105,3 +105,51 @@ def test_sending_the_same_situation_again_is_still_allowed(site):
     _, section = send(site, "status_update")
     assert section.count('<span class="justsent">') == 1
     assert len(re.findall(r"situation status_update", section)) == 2
+
+
+# ---------------------------------------------------------------------------
+# Outcome messages are not sent by hand; a reminder needs something owed
+# ---------------------------------------------------------------------------
+
+def test_the_list_opens_on_a_prompt_and_offers_no_outcome_messages(site):
+    section = messages_section(site(render.tab_href(CASE, render.MESSAGES_TAB))[2])
+    select = re.search(r'<select name="situation" required>(.*?)</select>', section, re.S).group(1)
+    assert select.startswith('<option value="" selected disabled>Choose a situation…</option>')
+    values = re.findall(r'<option value="([a-z_]+)"', select)
+    for outcome in ("case_closed", "final_outcome_approved", "final_outcome_declined"):
+        assert outcome not in values
+    assert {"resubmission", "reminder", "status_update"} <= set(values)
+
+
+@pytest.mark.parametrize("outcome", ["case_closed", "final_outcome_approved",
+                                     "final_outcome_declined"])
+def test_an_outcome_message_is_refused_even_if_posted(site, outcome):
+    status, where, _ = site("/action/send-message", {
+        "case_id": CASE, "situation": outcome, "back": render.tab_href(CASE, "Communications")})
+    assert status == 303 and "err=" in where
+    section = messages_section(site(where.split("#")[0])[2])
+    assert "Not sent" in section and "not sent by hand" in section
+    conn = console_server._conn
+    assert not conn.execute("SELECT 1 FROM communication WHERE case_id = ? AND situation = ?",
+                            (CASE, outcome)).fetchone()
+
+
+def test_a_reminder_lists_what_is_owed_and_is_refused_when_nothing_is(site):
+    # Case 2 owes two documents: the reminder names them
+    _, section = send(site, "reminder")
+    body = re.search(r'<details class="doc doc--fresh" open>.*?<p>(.*?)</p>', section,
+                     re.S).group(1)
+    assert "ubo declaration" in body and "id document for Denton Halliwell" in body
+    # Case 1 owes nothing: no reminder, and the reason is beside the button
+    status, where, _ = site("/action/send-message", {
+        "case_id": "WAL-ONB-0001", "situation": "reminder",
+        "back": render.tab_href("WAL-ONB-0001", "Communications")})
+    assert "err=" in where
+    section = messages_section(site(where.split("#")[0])[2])
+    assert "Nothing is outstanding from this customer" in section
+
+
+def test_no_choice_is_refused_not_sent(site):
+    status, where, _ = site("/action/send-message", {
+        "case_id": CASE, "back": render.tab_href(CASE, "Communications")})
+    assert status == 303 and "err=" in where and "Choose%20a%20situation" in where

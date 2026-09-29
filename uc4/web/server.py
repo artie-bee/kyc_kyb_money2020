@@ -422,7 +422,10 @@ class Handler(BaseHTTPRequestHandler):
 
         if path == "/action/send-message":
             result = data.send_message(conn, form["case_id"],
-                                       form["situation"], reviewer)
+                                       form.get("situation", ""), reviewer)
+            if result.communication_id is None:
+                # Withheld or blocked by the communication rules; say why.
+                raise ValueError("not sent: " + "; ".join(result.problems or ["no message"]))
             return ("Message " + result.communication_id + " ("
                     + result.template_id + ") " + result.sent_status)
 

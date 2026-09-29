@@ -1800,8 +1800,12 @@ def _message_history(conn, case_id, flash=None, **kw):
     for m in messages:
         if m["audience"] == "applicant" and m["sent_status"] == "sent" and m["situation"]:
             sent[m["situation"]] = m
-    situations = sorted({r["situation"] for r in data.kb().communication_rules})
-    opts = "".join(
+    # Outcome messages are not offered: they go out with the decision (or the
+    # automatic closure) they announce, never on their own. The list opens on
+    # a prompt, so nothing is sent until a situation has been chosen.
+    situations = sorted({r["situation"] for r in data.kb().communication_rules}
+                        - set(data.MANUAL_SITUATIONS_EXCLUDED))
+    opts = '<option value="" selected disabled>Choose a situation…</option>' + "".join(
         '<option value="' + e(s) + '">' + e(s)
         + (" — already sent " + e(_when_short(sent[s]["created_at"])) if s in sent else "")
         + "</option>" for s in situations)
@@ -1811,8 +1815,9 @@ def _message_history(conn, case_id, flash=None, **kw):
                     + idtag(just[1]) + ". It is marked <strong>Just sent</strong> above, and "
                     "the customer sees it on their Messages page. Delivery: "
                     + e(data.DELIVERY_LABEL) + ".", "ok", "Sent")
-    elif flash and flash[0] == "err" and "send" in flash[1].lower():
-        done = note(e(flash[1]), "bad", "Not sent")
+    elif flash and flash[0] == "err" and any(
+            k in flash[1] for k in ("not sent by hand", "remind", "Choose a situation")):
+        done = note(e(flash[1].split(": ", 1)[-1]), "bad", "Not sent")
     already = ""
     if sent:
         already = ('<p class="sentlist"><strong>Already sent to this customer:</strong> '
@@ -1825,8 +1830,12 @@ def _message_history(conn, case_id, flash=None, **kw):
         '<input type="hidden" name="case_id" value="' + e(case_id) + '">'
         '<input type="hidden" name="back" value="' + e(tab_href(case_id, "Communications"))
         + '">' + already
-        + '<div class="field"><label>Situation</label><select name="situation">' + opts
-        + "</select></div>"
+        + '<div class="field"><label>Situation</label><select name="situation" required>'
+        + opts + "</select>"
+        '<span class="help">Approval, decline and closure messages are not in this list: '
+        "they are sent with the decision you record above (or by the automatic closure "
+        "after 30 days without a reply). A reminder lists whatever the customer still "
+        "owes.</span></div>"
         '<button class="btn btn--primary" type="submit">Draft and approve as me</button>'
         "</form>")
     return "".join(out)
