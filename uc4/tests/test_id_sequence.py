@@ -59,6 +59,16 @@ def test_create_delete_create_gives_the_next_number_not_the_old_one(demo):
     assert not gone & all_ids(conn), "and none of their ids came back"
 
 
+def test_an_older_database_without_a_sequence_still_never_reuses_a_deleted_id(demo):
+    """A database made before id_sequence existed: the table starts empty."""
+    conn = demo["conn"]
+    first = apply_as_new_customer(conn)
+    conn.execute("DELETE FROM id_sequence")
+    conn.commit()
+    data.delete_demo_case(conn, first, "analyst.test")
+    assert apply_as_new_customer(conn) == "WAL-DEMO-0002"
+
+
 def test_after_reset_demo_the_sequence_continues(demo):
     conn = demo["conn"]
     assert apply_as_new_customer(conn) == "WAL-DEMO-0001"

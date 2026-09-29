@@ -56,6 +56,9 @@ def delete(conn, case_id: str) -> dict:
     rows = 0
     try:
         conn.execute("BEGIN IMMEDIATE")
+        # A database built before id_sequence existed has an empty one: record
+        # every id on file first, so the ids being deleted are never reissued.
+        db.raise_floors(conn, db.id_floors(conn))
         conn.execute("DROP TRIGGER audit_no_delete")
         for table, where in _BY_CASE:
             rows += conn.execute(f"DELETE FROM {table} WHERE {where}", (case_id,)).rowcount
