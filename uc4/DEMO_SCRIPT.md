@@ -248,6 +248,22 @@ Both are synthetic specimens. Never upload a real document.
 
 ---
 
+## Scenario 9 — Documents in, but one more is needed · Case WAL-ONB-0001 · about 4 min
+
+**Story:** the customer sent everything, but on review the analyst wants one more document. They ask; the customer does not answer; the system reminds them after 3 business days.
+
+1. Open **Case 1** (Kaari Mets). Every document is accepted and it is *Ready for decision*.
+2. **Checklist tab:** under **Request another document**, add **Business bank statement** with a reason, e.g. *"Three months of statements to confirm expected card spend."* The case now owes a document again.
+3. **Decision & messages tab → ② Send a message only:** the situation is already filled in — `resubmission (suggested)` — with the reason *"Not asked for in writing yet: bank statement… A reminder follows after 3 business days…"*, and the text the customer will read names the bank statement. Click **Draft and approve as me**.
+4. **Portal** (Kaari Mets): within about 15 seconds the **New message** card pops up and **Messages** shows **1**; **Documents needed** lists the bank statement.
+5. **Timeline tab:** a dashed *Reminder due 2026-10-01* — three business days after a Monday request.
+6. The customer does not answer. Click **Demo clock +1 day** three times (to Thursday 1 Oct): the reminder goes out on its own, listing the bank statement, and pops up in the portal. The Customer follow-up panel shows *Reminder sent*.
+7. Optional: upload a PDF against the bank statement in the portal — the item goes under review and no further reminder is sent.
+
+**What to say:** "Nobody had to remember to chase. The request named exactly what was missing, and three working days later the system reminded the customer — once, with approved wording — and stopped the moment the document arrived."
+
+---
+
 ## Close (5 minutes)
 
 1. **Audit export (10.8):** download the JSON bundle for Case 6. Show that it carries every row, the full audit trail, and the KB and model/prompt versions used.

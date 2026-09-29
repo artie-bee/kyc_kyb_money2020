@@ -612,6 +612,15 @@ that filters on the server, so the page works with scripts off. Customer
 timing - waiting since, last view, next reminder - is on the case detail
 (follow-up panel and timeline).
 
+Follow-up requests after review: `follow_up_reminder_business_days` (3) in
+kb/communication_schedule.csv. A clarification, or a request naming a document an
+analyst added to the checklist after the first round, gets one reminder that many
+business days (Monday to Friday) after it was sent, if the customer still owes it
+(communication.follow_up_requests / follow_up_due; audited
+`follow_up_reminder_sent`). The customer's first document request keeps its
+14-day reminder and 30-day closure. Send a message suggests a request for any
+document not yet asked for in writing, before suggesting a reminder.
+
 Optional early nudge: `unviewed_nudge` in kb/communication_schedule.csv, 0 (off)
 by default. Set to N days and a request the customer has not viewed after N days
 gets one short nudge (situation `unviewed_nudge`, audited

@@ -35,6 +35,11 @@ from web import render                                                # noqa: E4
 KB = KnowledgeBase()
 CASE = "WAL-ONB-0014"
 EXTRA = "bank_statement"
+# A request that names a document an analyst added is a follow-up: its one
+# reminder comes after 3 business days (Monday 28 Sep -> Thursday 1 Oct, day 3)
+# rather than 14 calendar days. The tests below that add a second item send
+# exactly such a request.
+FOLLOW_UP_DAY = 3
 REMIND, CLOSE = (KB.communication_schedule[k] for k in
                  ("first_reminder_after_days", "close_after_days"))
 
@@ -116,7 +121,7 @@ def test_two_outstanding_items_produce_one_reminder_listing_both(env):
     request(conn)
 
     sent = run_days(env, REMIND + 5)
-    assert sent == {REMIND: "reminder"}, "one reminder, on the schedule's day"
+    assert sent == {FOLLOW_UP_DAY: "reminder"},         "one reminder, on the follow-up schedule's day (the request names an added document)"
     reminders = conn.execute("SELECT c.template_id, o.body FROM outbox o JOIN communication c"
                              " USING (communication_id) WHERE c.case_id = ? AND"
                              " c.situation = 'reminder'", (CASE,)).fetchall()
@@ -128,7 +133,8 @@ def test_two_outstanding_items_produce_one_reminder_listing_both(env):
         assert label in body
     assert "[item_list]" not in body and not communication.scan(body)
     chased = conn.execute("SELECT payload_summary FROM audit_event WHERE case_id = ?"
-                          " AND action = 'applicant_chased'", (CASE,)).fetchone()[0]
+                          " AND action IN ('applicant_chased', 'follow_up_reminder_sent')",
+                          (CASE,)).fetchone()[0]
     assert all(i["item_id"] in chased for i in owed)
 
 
@@ -214,7 +220,7 @@ def test_repeated_bad_uploads_do_not_extend_the_no_response_limit(env, monkeypat
             assert result.quality_status == "resubmission_required"
 
     sent = run_days(env, CLOSE + 2, on_day=upload)
-    assert sent == {REMIND: "reminder", CLOSE: "case_closed"}, \
+    assert sent == {FOLLOW_UP_DAY: "reminder", CLOSE: "case_closed"}, \
         "the deadlines count from the first request, not the latest attempt"
     assert communication.first_request_at(conn, CASE) == first
     placed = max(r[0] for r in conn.execute(
@@ -280,7 +286,7 @@ def test_reminders_go_while_an_analyst_holds_another_document_but_it_never_auto_
     assert [i["document_type"] for i in communication.owed_items(conn, CASE)] == \
         ["proof_of_address"], "the customer still owes the other item"
 
-    assert run_days(env, CLOSE + 10) == {REMIND: "reminder"}, \
+    assert run_days(env, CLOSE + 10) == {FOLLOW_UP_DAY: "reminder"}, \
         "reminded on schedule; not closed while the customer is not the sole blocker"
     body = conn.execute("SELECT o.body FROM outbox o JOIN communication c USING"
                         " (communication_id) WHERE c.case_id = ? AND c.situation = 'reminder'",

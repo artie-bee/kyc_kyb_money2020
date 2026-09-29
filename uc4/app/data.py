@@ -975,6 +975,17 @@ def suggested_message(conn, case_id: str) -> dict:
         return {"situation": "resubmission",
                 "why": f"The customer owes {len(owed)} document(s) and has not been asked in "
                        "writing yet."}
+    # A document added since the last request (an analyst asking for more
+    # after review) is asked for first; the reminder comes later, on its own.
+    named = {i for ids in communication._items_requested(conn, case_id).values() for i in ids}
+    new = [i for i in owed if i["item_id"] not in named]
+    if new and "resubmission" in offered:
+        return {"situation": "resubmission",
+                "why": "Not asked for in writing yet: "
+                       + ", ".join(communication.item_label(i) for i in new)
+                       + f". A reminder follows after "
+                       f"{kb().communication_schedule.get(communication.FOLLOW_UP, 0)} business "
+                       "days if it has not arrived."}
     if owed and "reminder" in offered:
         return {"situation": "reminder",
                 "why": f"The customer was asked and still owes {len(owed)} document(s)."}

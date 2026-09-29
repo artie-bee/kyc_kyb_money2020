@@ -1,4 +1,5 @@
 setting,days,description
 first_reminder_after_days,14,Days to wait before the single reminder on an unanswered request
 close_after_days,30,Days after the original request before the case is closed as withdrawn
+follow_up_reminder_business_days,3,"Business days (Monday to Friday) after a follow-up request - a clarification, or a request for a document an analyst added after review - before one reminder about it, if the customer still owes it"
 unviewed_nudge,0,"Optional early nudge: days after a request is sent, if the customer has not viewed it, before one short nudge; 0 = off (the default)"

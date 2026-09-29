@@ -440,6 +440,10 @@ def chase(conn, case_id: str, kb: KnowledgeBase, clock: Clock,
         "SELECT situation FROM communication WHERE case_id = ?", (case_id,))}
     # An extra, never a substitute: the schedule below runs whatever it did.
     nudged = _nudge(conn, case_id, kb, clock, chooser, approver)
+    # A follow-up request (after review) has its own, shorter reminder.
+    followed = _follow_up_reminder(conn, case_id, kb, clock, chooser, approver, owed)
+    if followed is not None:
+        return followed
 
     if waited >= kb.communication_schedule["close_after_days"] and sole_blocker:
         if "case_closed" in already:
@@ -468,6 +472,81 @@ def chase(conn, case_id: str, kb: KnowledgeBase, clock: Clock,
                  kb.version)
         return result
     return nudged
+
+
+def add_business_days(day: date, n: int) -> date:
+    """n working days (Monday to Friday) after `day`. No public holidays: the
+    POC has no calendar for them."""
+    while n > 0:
+        day += timedelta(days=1)
+        if day.weekday() < 5:
+            n -= 1
+    return day
+
+
+FOLLOW_UP = "follow_up_reminder_business_days"
+
+
+def follow_up_requests(conn, case_id: str) -> list:
+    """The requests sent after review: a clarification, an additional-
+    information request, or any request naming a document an analyst added to
+    the checklist. [{communication_id, sent_at, situation}] oldest first. The
+    customer's first document request is not one - it keeps the 14-day
+    reminder."""
+    from .requirement_pack import ADDED_RULE_ID
+    added = {r[0] for r in conn.execute(
+        "SELECT i.item_id FROM checklist_item i JOIN requirement_pack p USING (pack_id)"
+        " WHERE p.case_id = ? AND i.rule_id = ?", (case_id, ADDED_RULE_ID))}
+    asked = _items_requested(conn, case_id)
+    marks = ",".join("?" * len(REQUEST_SITUATIONS))
+    out = []
+    for r in conn.execute(
+            "SELECT c.communication_id, c.situation, o.sent_at FROM outbox o JOIN communication c"
+            f" USING (communication_id) WHERE o.case_id = ? AND c.situation IN ({marks})"
+            " ORDER BY o.outbox_id", (case_id, *REQUEST_SITUATIONS)):
+        if (r["situation"] in ("clarification", "missing_items")
+                or added & set(asked.get(r["communication_id"], []))):
+            out.append(dict(r))
+    return out
+
+
+def _reminded_for(conn, case_id: str) -> set:
+    """The follow-up requests that have had their reminder (audited)."""
+    return {m for (p,) in conn.execute(
+        "SELECT payload_summary FROM audit_event WHERE case_id = ? AND action ="
+        " 'follow_up_reminder_sent'", (case_id,)) for m in _COMM_ID.findall(p)[:1]}
+
+
+def follow_up_due(conn, case_id: str, kb: KnowledgeBase) -> tuple | None:
+    """(request id, due date) for the latest follow-up request still waiting
+    for its reminder, or None."""
+    n = kb.communication_schedule.get(FOLLOW_UP, 0)
+    requests = follow_up_requests(conn, case_id) if n > 0 else []
+    if not requests or requests[-1]["communication_id"] in _reminded_for(conn, case_id):
+        return None
+    latest = requests[-1]
+    return latest["communication_id"], add_business_days(
+        date.fromisoformat(latest["sent_at"][:10]), n).isoformat()
+
+
+def _follow_up_reminder(conn, case_id, kb, clock, chooser, approver, owed):
+    """One reminder, n business days after a follow-up request the customer
+    has not answered - listing everything still owed, in the approved request
+    wording. Viewing the request does not move it; an acceptable upload stops
+    it (nothing is owed), and so does a closed case (chase() returns first)."""
+    due = follow_up_due(conn, case_id, kb)
+    if due is None or not owed or clock.today().isoformat() < due[1]:
+        return None
+    result = send_required_message(conn, case_id, REMINDER, kb, chooser, approver)
+    if result.communication_id is None:
+        return result
+    n = kb.communication_schedule[FOLLOW_UP]
+    db.audit(conn, case_id, "system", ACTOR, "follow_up_reminder_sent",
+             f"{due[0]} not answered {n} business days after it was sent; one reminder "
+             f"{result.communication_id} sent under the approved template, listing "
+             f"{len(owed)} outstanding item(s): "
+             + ", ".join(f"{i['item_id']} ({i['document_type']})" for i in owed), kb.version)
+    return result
 
 
 def _latest_request(conn, case_id: str):
@@ -576,6 +655,9 @@ def waiting_timing(conn, case_id: str, kb: KnowledgeBase) -> dict | None:
     nudge = nudge_due(conn, case_id, kb)
     if nudge:
         due.append((nudge, "nudge"))
+    follow = follow_up_due(conn, case_id, kb)
+    if follow:
+        due.append((follow[1], "reminder"))
     viewed = conn.execute("SELECT MAX(timestamp) FROM audit_event WHERE case_id = ? AND"
                           " action = 'message_viewed'", (case_id,)).fetchone()[0]
     nxt = min(due) if due else None
@@ -600,6 +682,7 @@ def follow_up(conn, case_id: str, kb: KnowledgeBase) -> dict:
     schedule = kb.communication_schedule
     started = first_request_at(conn, case_id)
     _, sole_blocker = customer_blocking(conn, case_id)
+    follow = follow_up_due(conn, case_id, kb)
     owed = {i["item_id"] for i in owed_items(conn, case_id)}
     items = {r["item_id"]: r for r in conn.execute(
         "SELECT i.*, ind.full_name FROM checklist_item i JOIN requirement_pack p USING (pack_id)"
@@ -638,7 +721,9 @@ def follow_up(conn, case_id: str, kb: KnowledgeBase) -> dict:
 
         due = None
         if status == "Awaiting customer" and started:
-            due = _on_day(started, schedule["first_reminder_after_days"])
+            # A follow-up request has its own business-day reminder.
+            due = (follow[1] if follow and follow[0] == m["communication_id"]
+                   else _on_day(started, schedule["first_reminder_after_days"]))
         requests.append({
             "communication_id": m["communication_id"],
             "situation": m["situation"],
