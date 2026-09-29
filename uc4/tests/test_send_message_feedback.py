@@ -57,14 +57,17 @@ def site(tmp_path):
 
 
 def messages_section(page):
-    return page.split('<section id="messages">')[1].split("</section>")[0]
+    """The decision section (with its action box: decide, or send a message
+    only) and Message history below it."""
+    return page.split('<section id="decision">')[1]
 
 
 def send(go, situation):
+    """Post the form as the page does: its back address is the send option."""
     status, where, _ = go("/action/send-message", {
         "case_id": CASE, "situation": situation,
-        "back": render.tab_href(CASE, "Communications")})
-    assert status == 303 and where.endswith("#messages"), where
+        "back": render.tab_href(CASE, render.MESSAGES_TAB, "send")})
+    assert status == 303 and where.endswith("#send"), where
     return where, messages_section(go(where.split("#")[0])[2])
 
 
@@ -77,12 +80,14 @@ def test_before_anything_is_sent_nothing_says_already_sent(site):
 def test_after_sending_the_confirmation_is_beside_the_button(site):
     where, section = send(site, "resubmission")
     comm = re.search(r"Message%20(COM-\d+)", where).group(1)
-    form_at = section.index("<h3>Send a message</h3>")
-    done = section[form_at:]
+    form_at = section.index('id="send"')
+    history_at = section.index('<section id="messages">')
+    done = section[form_at:history_at]
+    assert "Send a message only" in done
     assert "Sent" in done and comm in done and "TPL-0001" in done, \
-        "the confirmation sits under the Send a message heading, next to the button"
+        "the confirmation sits in the send option of the action box, by the button"
     assert "Simulated - sent to demo outbox" in done
-    assert section.count('<span class="justsent">') == 1 and comm in section[:form_at]
+    assert section.count('<span class="justsent">') == 1 and comm in section[history_at:]
     assert re.search(r'<details class="doc doc--fresh" open>', section), "opened and marked"
 
 

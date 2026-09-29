@@ -1319,7 +1319,8 @@ def _tab_risk(conn, case_id, **kw):
     return "".join(out)
 
 
-def _tab_decision(conn, case_id, role="analyst", reviewer="analyst.demo", **kw):
+def _tab_decision(conn, case_id, role="analyst", reviewer="analyst.demo", flash=None,
+                  **kw):
     out = ["<h2>Decision</h2>"]
     for d in data.decisions(conn, case_id):
         body = ("<strong>" + e(d["decision"]) + "</strong> by " + e(d["reviewer"])
@@ -1340,7 +1341,8 @@ def _tab_decision(conn, case_id, role="analyst", reviewer="analyst.demo", **kw):
     band = data.band_for_decisions(conn, case_id)
     options = data.available_decisions(conn, case_id)
     if not options:
-        out.append('<p class="empty">No decision is available at this band.</p>')
+        out.append(_action_box('<p class="empty">No decision is available at this band.</p>',
+                               _send_part(conn, case_id, flash)))
         return "".join(out)
 
     # What the system concluded. Without this the analyst has to leave the tab
@@ -1391,7 +1393,7 @@ def _tab_decision(conn, case_id, role="analyst", reviewer="analyst.demo", **kw):
         same = " (matches the recommendation)" if o == recommended else ""
         opts.append('<option value="' + e(o) + '">' + e(o) + e(same) + "</option>")
 
-    out.append(
+    decide = (
         '<div class="grid2 decide">'
         '<form method="post" action="/action/record-decision" class="panel">'
         '<input type="hidden" name="case_id" value="' + e(case_id) + '">'
@@ -1456,7 +1458,25 @@ def _tab_decision(conn, case_id, role="analyst", reviewer="analyst.demo", **kw):
         "</div></div>"
         '<button class="btn btn--primary" type="submit">Record this decision</button>'
         "</form>" + _message_previews(conn, case_id, options) + "</div>")
+    out.append(_action_box(decide, _send_part(conn, case_id, flash)))
     return "".join(out)
+
+
+def _action_box(decide, send) -> str:
+    """The two things this tab lets you do, in one box and plainly apart: record
+    a decision (its message goes with it), OR send a message on its own."""
+    return ('<section class="actionbox" id="act">'
+            '<div class="actionbox__opt">'
+            '<h3 class="actionbox__h"><span class="actionbox__n">1</span>Record a decision</h3>'
+            '<p class="actionbox__sub">The customer message shown beside the form is sent '
+            "with the decision. You do not send it separately.</p>" + decide + "</div>"
+            '<div class="actionbox__or" role="separator"><span>or</span></div>'
+            '<div class="actionbox__opt" id="send">'
+            '<h3 class="actionbox__h"><span class="actionbox__n">2</span>Send a message only'
+            "</h3>"
+            '<p class="actionbox__sub">No decision is recorded and the case stays where it is. '
+            "Use this to ask for documents, remind, or give an update.</p>" + send + "</div>"
+            "</section>")
 
 
 GENERIC_NOTE = "Generic wording is used because this case has an internal finding."
@@ -1754,7 +1774,8 @@ def _tab_decision_messages(conn, case_id, role="analyst", reviewer="analyst.demo
     Each section keeps an id, so the old tab links land on it."""
     return ('<section id="follow-up">' + _follow_up_panel(conn, case_id) + "</section>"
             '<section id="decision">' + _tab_decision(conn, case_id, role=role,
-                                                      reviewer=reviewer) + "</section>"
+                                                      reviewer=reviewer, flash=flash)
+            + "</section>"
             '<section id="messages">' + _message_history(conn, case_id, flash)
             + "</section>")
 
@@ -1764,19 +1785,14 @@ def _when_short(stamp) -> str:
 
 
 def _message_history(conn, case_id, flash=None, **kw):
-    """Every message on the case, and Send a message - which says, right where
-    it is used, what it has just sent and which situations already went out.
-    Presentation only: sending the same situation again is still allowed."""
+    """Every message on the case, oldest first; the one just sent is opened and
+    marked. Sending is in the action box above, beside the decision."""
     out = ["<h2>Message history</h2>"]
     for t in data.compliance_tasks(conn, case_id):
         out.append(note(e(t["reason"]), "bad", "Compliance task " + e(t["task_id"])
                         + ": " + e(t["task"])))
 
-    # The message this page was redirected back with, if it was a send.
-    just = None
-    if flash and flash[0] in ("ok", "err"):
-        m = re.match(r"Message (COM-\d+) \((TPL-\d+)\) (\w+)", flash[1])
-        just = m.groups() if m and flash[0] == "ok" else None
+    just = _just_sent(flash)
     messages = data.communications(conn, case_id)
     if not messages:
         out.append('<p class="empty">Nothing drafted yet.</p>')
@@ -1795,6 +1811,24 @@ def _message_history(conn, case_id, flash=None, **kw):
                    '<div class="body"><p>' + e(m["rendered_text"]) + "</p>"
                    '<p class="foot">' + meta + "</p></div></details>")
 
+    return "".join(out)
+
+
+def _just_sent(flash):
+    """(message id, template, status) of the message this page was redirected
+    back with, if the redirect was a successful send."""
+    if flash and flash[0] == "ok":
+        m = re.match(r"Message (COM-\d+) \((TPL-\d+)\) (\w+)", flash[1])
+        return m.groups() if m else None
+    return None
+
+
+def _send_part(conn, case_id, flash=None) -> str:
+    """Option 2 of the action box: send a message without recording a decision.
+    The situation is filled in from the case; the text is previewed; what has
+    already been sent is listed; the outcome of the last send is shown here."""
+    just = _just_sent(flash)
+    messages = data.communications(conn, case_id)
     # Which situations have already gone to the customer, and when (the latest).
     sent = {}
     for m in messages:
@@ -1826,7 +1860,7 @@ def _message_history(conn, case_id, flash=None, **kw):
     done = ""
     if just:
         done = note("Message " + idtag(just[0]) + " sent to the customer under "
-                    + idtag(just[1]) + ". It is marked <strong>Just sent</strong> above, and "
+                    + idtag(just[1]) + ". It is marked <strong>Just sent</strong> in Message history below, and "
                     "the customer sees it on their Messages page. Delivery: "
                     + e(data.DELIVERY_LABEL) + ".", "ok", "Sent")
     elif flash and flash[0] == "err" and any(
@@ -1838,10 +1872,9 @@ def _message_history(conn, case_id, flash=None, **kw):
                    + ", ".join(e(s) + ' <span class="muted">(' + e(sent[s]["communication_id"])
                                + ", " + e(_when_short(sent[s]["created_at"])) + ")</span>"
                                for s in sorted(sent)) + "</p>")
-    out.append(
-        "<h3>Send a message</h3>" + done + _send_form(case_id, suggested, opts, previews,
-                                                      already))
-    return "".join(out)
+    return done + _send_form(case_id, suggested, opts, previews, already)
+
+
 
 
 def _send_form(case_id, suggested, opts, previews, already) -> str:
@@ -1856,8 +1889,8 @@ def _send_form(case_id, suggested, opts, previews, already) -> str:
     return (
         '<form method="post" action="/action/send-message" class="panel" data-once>'
         '<input type="hidden" name="case_id" value="' + e(case_id) + '">'
-        '<input type="hidden" name="back" value="' + e(tab_href(case_id, "Communications"))
-        + '">' + already + why
+        '<input type="hidden" name="back" value="'
+        + e(tab_href(case_id, MESSAGES_TAB, "send")) + '">' + already + why
         + '<div class="field"><label>Situation</label>'
         '<select name="situation" required data-send-previews>' + opts + "</select>"
         '<span class="help">Filled in from where the case stands; change it if you need '

@@ -103,12 +103,15 @@ def test_the_merged_tab_holds_everything_both_tabs_had_in_order(fresh):
     assert "?tab=Decision\"" not in page and "?tab=Communications" not in page
     marks = ['id="follow-up"', "Customer follow-up", 'id="decision"', "<h2>Decision</h2>",
              "System recommends", "Allowed at band", "Not offered at band",
+             'class="actionbox"', '<span class="actionbox__n">1</span>Record a decision',
              'action="/action/record-decision"', 'id="customer-message"',
-             'id="messages"', "<h2>Message history</h2>", "Compliance task",
-             "<h3>Send a message</h3>", 'action="/action/send-message"']
+             'class="actionbox__or"', 'id="send"',
+             '<span class="actionbox__n">2</span>Send a message only',
+             'action="/action/send-message"',
+             'id="messages"', "<h2>Message history</h2>", "Compliance task"]
     where = [page.find(m) for m in marks]
     assert -1 not in where, [m for m, w in zip(marks, where) if w == -1]
-    assert where == sorted(where), "follow-up, then the decision, then the message history"
+    assert where == sorted(where),         "follow-up, then one action box (decide OR send a message only), then the history"
     # the preview sits beside the form, in the same two-column row
     row = page.split('<div class="grid2 decide">')[1]
     assert row.find("record-decision") < row.find('id="customer-message"')

@@ -523,6 +523,22 @@ details.doc--fresh { border-color:var(--role-ready); box-shadow:0 0 0 2px var(--
             border-radius:3px; padding:1px 6px; }
 .sentlist { margin:0 0 10px; font-size:12.5px; color:var(--fg-mute); }
 button[data-busy] { opacity:.7; cursor:progress; }
+/* The action box: record a decision, OR send a message only - one box, two
+   plainly separate options, so one is never mistaken for the other. */
+.actionbox { border:1px solid var(--line); border-radius:8px; background:var(--surface);
+             padding:16px 18px; margin:14px 0 20px; }
+.actionbox__h { display:flex; align-items:center; gap:10px; margin:0 0 2px; font-size:16px; }
+.actionbox__n { width:24px; height:24px; border-radius:50%; flex:none; display:inline-flex;
+                align-items:center; justify-content:center; font-size:12.5px; font-weight:700;
+                color:var(--accent); background:var(--accent-soft);
+                border:1px solid var(--accent-line); }
+.actionbox__sub { margin:0 0 12px 34px; font-size:13px; color:var(--fg-mute); }
+.actionbox .decide, .actionbox form.panel { margin-bottom:0; }
+.actionbox__or { display:flex; align-items:center; gap:12px; margin:18px 0 16px;
+                 color:var(--fg-faint); font-size:12px; text-transform:uppercase;
+                 letter-spacing:.1em; font-weight:650; }
+.actionbox__or::before, .actionbox__or::after { content:""; flex:1; height:1px;
+                                                background:var(--line); }
 .suggest { margin:0 0 10px; font-size:13px; color:var(--fg-mute); }
 .sendpreview { margin:4px 0 12px; }
 .sendpreview__k { display:block; font-size:11px; text-transform:uppercase; letter-spacing:.06em;
