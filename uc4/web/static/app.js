@@ -81,6 +81,17 @@
     });
   });
 
+  // ---- send a message: preview the situation chosen ----------------------
+  // The server previews every offered situation and shows the suggested one;
+  // picking another shows its text before anything is sent.
+  var sendPick = document.querySelector("select[data-send-previews]");
+  if (sendPick) {
+    sendPick.addEventListener("change", function () {
+      Array.prototype.forEach.call(document.querySelectorAll("[data-send-preview-for]"),
+        function (p) { p.hidden = p.getAttribute("data-send-preview-for") !== sendPick.value; });
+    });
+  }
+
   // ---- decision tab: customer message preview ---------------------------
   // Every decision's preview is on the page; show only the one selected.
   // With scripts off they all stay visible, each under its decision.

@@ -930,6 +930,71 @@ def record_decision(conn, case_id, reviewer, reviewer_role, choice, reason_code,
 MANUAL_SITUATIONS_EXCLUDED = communication.OUTCOME_SITUATIONS
 
 
+def _pending_withheld(conn, case_id):
+    """The situation a recorded decision withheld (confirmed sanctions match)
+    and nobody has approved since, or None."""
+    after = messages_after_decision(conn, case_id)
+    if after and after["withheld"] and not after["sent"] and after["situation"]:
+        return after["situation"]
+    return None
+
+
+def manual_situations(conn, case_id: str) -> list[str]:
+    """What Send a message offers on this case: every situation the rules allow
+    here, less the outcome messages (they go with the decision) - plus, only
+    when a decision withheld one, that very message for compliance to approve."""
+    restricted = bool(case(conn, case_id)["case"]["restricted_finding"])
+    offered = sorted(s for s in {r["situation"] for r in kb().communication_rules}
+                     if s not in MANUAL_SITUATIONS_EXCLUDED
+                     and s != communication.NUDGE and kb().templates_for(s, restricted))
+    pending = _pending_withheld(conn, case_id)
+    return ([pending] if pending and pending not in offered else []) + offered
+
+
+def suggested_message(conn, case_id: str) -> dict:
+    """The message this case calls for now, so Send a message opens on it:
+    {situation, why}, or {situation: None, why} when none is due. Read from the
+    case as it stands - what the customer owes, what has been sent, the holds,
+    the decision - never a new rule: the analyst can still pick another."""
+    row = case(conn, case_id)["case"]
+    pending = _pending_withheld(conn, case_id)
+    if pending:
+        return {"situation": pending,
+                "why": "The decision's message was withheld (confirmed sanctions match): "
+                       "compliance approves it here, as its own act."}
+    if row["status"] in CLOSED_STATUSES:
+        return {"situation": None,
+                "why": "This case is decided; its customer message went out with the decision."}
+    offered = set(manual_situations(conn, case_id))
+    owed = communication.owed_items(conn, case_id)
+    asked = conn.execute(
+        "SELECT 1 FROM communication WHERE case_id = ? AND sent_status = 'sent' AND situation IN ("
+        + ",".join("?" * len(communication.REQUEST_SITUATIONS)) + ")",
+        (case_id, *communication.REQUEST_SITUATIONS)).fetchone()
+    if owed and not asked and "resubmission" in offered:
+        return {"situation": "resubmission",
+                "why": f"The customer owes {len(owed)} document(s) and has not been asked in "
+                       "writing yet."}
+    if owed and "reminder" in offered:
+        return {"situation": "reminder",
+                "why": f"The customer was asked and still owes {len(owed)} document(s)."}
+    if row["restricted_finding"] or row["status"] in ("analyst_review_required",
+                                                      "enhanced_due_diligence"):
+        return {"situation": "manual_review_underway",
+                "why": "The case is with the team; this generic holding message states no reason."}
+    if "status_update" in offered:
+        return {"situation": "status_update",
+                "why": "Nothing is owed and nothing is held: a progress note."}
+    return {"situation": None, "why": "No message is due."}
+
+
+def manual_previews(conn, case_id: str, situations) -> dict:
+    """{situation: what Send a message would send}, rendered as it would go -
+    by a person, so a confirmed-match case previews what compliance approves."""
+    return {s: communication.preview_message(conn, case_id, s, kb(), approved_by_person=True)
+            for s in situations}
+
+
 def send_message(conn, case_id, situation, approver):
     """A message an analyst sends by hand (Send a message). Outcome messages are
     refused here - they go out with the decision or the automatic closure they
@@ -937,13 +1002,18 @@ def send_message(conn, case_id, situation, approver):
     otherwise ask them for "the outstanding documents" that do not exist."""
     if not (situation or "").strip():
         raise ValueError("Choose a situation first.")
+    # A decided case takes no further message by hand: what the customer is
+    # told went with the decision. (Compliance approving a withheld one, below,
+    # is the exception.)
+    if (case(conn, case_id)["case"]["status"] in CLOSED_STATUSES
+            and situation != _pending_withheld(conn, case_id)):
+        raise ValueError("This case is decided, so no further message is sent by hand: "
+                         "the customer's message went out with the decision.")
     if situation in MANUAL_SITUATIONS_EXCLUDED:
         # The one exception: compliance approving the outcome message that a
         # recorded decision withheld (a confirmed sanctions match) - the same
         # message the decision announced, sent as its own approved act.
-        after = messages_after_decision(conn, case_id)
-        if not (after and after["withheld"] and not after["sent"]
-                and after["situation"] == situation):
+        if situation != _pending_withheld(conn, case_id):
             raise ValueError(f"'{situation}' is not sent by hand: it goes out with the decision "
                              "that it announces. Record the decision in the decision form "
                              "instead.")

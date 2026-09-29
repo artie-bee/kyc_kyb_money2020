@@ -257,7 +257,8 @@ def _choose(conn, case_id: str, situation: str, kb: KnowledgeBase, chooser: Temp
 
 def preview_message(conn, case_id: str, situation: str, kb: KnowledgeBase,
                     template_id: str | None = None,
-                    chooser: TemplateChooser | None = None) -> dict:
+                    chooser: TemplateChooser | None = None,
+                    approved_by_person: bool = False) -> dict:
     """What an automatic send of this situation would do now, writing nothing:
     the same three gates, the same choice and rendering as send_required_message.
 
@@ -268,7 +269,9 @@ def preview_message(conn, case_id: str, situation: str, kb: KnowledgeBase,
     case = conn.execute("SELECT * FROM onboarding_case WHERE case_id = ?", (case_id,)).fetchone()
     restricted = bool(case["restricted_finding"])
     out = {"situation": situation, "restricted": restricted, "template_id": None, "text": None}
-    if confirmed_sanctions_match(conn, case_id):
+    # Gate 2 stops an AUTOMATIC message on a confirmed sanctions match; a message
+    # a person approves (Send a message) is exactly what it leaves room for.
+    if confirmed_sanctions_match(conn, case_id) and not approved_by_person:
         return dict(out, kind="withheld")
     rule, chosen, text = _choose(conn, case_id, situation, kb, chooser or MockTemplateChooser(),
                                  template_id, restricted)

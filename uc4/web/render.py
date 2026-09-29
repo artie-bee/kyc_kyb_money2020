@@ -1800,15 +1800,29 @@ def _message_history(conn, case_id, flash=None, **kw):
     for m in messages:
         if m["audience"] == "applicant" and m["sent_status"] == "sent" and m["situation"]:
             sent[m["situation"]] = m
-    # Outcome messages are not offered: they go out with the decision (or the
-    # automatic closure) they announce, never on their own. The list opens on
-    # a prompt, so nothing is sent until a situation has been chosen.
-    situations = sorted({r["situation"] for r in data.kb().communication_rules}
-                        - set(data.MANUAL_SITUATIONS_EXCLUDED))
-    opts = '<option value="" selected disabled>Choose a situation…</option>' + "".join(
-        '<option value="' + e(s) + '">' + e(s)
-        + (" — already sent " + e(_when_short(sent[s]["created_at"])) if s in sent else "")
-        + "</option>" for s in situations)
+    # The list offers what the rules allow here, without the outcome messages
+    # (they go with the decision), and opens on the message the case calls for
+    # now - so the situation is filled in from the case, not left to chance.
+    situations = data.manual_situations(conn, case_id)
+    suggested = data.suggested_message(conn, case_id)
+    pick = suggested["situation"]
+    opts = ('<option value=""' + ("" if pick else " selected") + ' disabled>'
+            "Choose a situation…</option>" + "".join(
+                '<option value="' + e(s) + '"' + (" selected" if s == pick else "") + ">" + e(s)
+                + (" (suggested)" if s == pick else "")
+                + (" — already sent " + e(_when_short(sent[s]["created_at"])) if s in sent else "")
+                + "</option>" for s in situations))
+    previews = []
+    for s, pv in data.manual_previews(conn, case_id, situations).items():
+        if pv["kind"] == "message":
+            body = ('<div class="msg"><span class="msg__when">' + idtag(pv["template_id"])
+                    + " approved template</span>" + e(pv["text"]) + "</div>")
+        elif pv["kind"] == "blocked":
+            body = note("This message would be blocked by the restricted-wording check.", "bad")
+        else:
+            body = '<p class="empty">No approved template is allowed for this here.</p>'
+        previews.append('<div class="preview" data-send-preview-for="' + e(s) + '"'
+                        + ("" if s == pick else " hidden") + ">" + body + "</div>")
     done = ""
     if just:
         done = note("Message " + idtag(just[0]) + " sent to the customer under "
@@ -1825,20 +1839,35 @@ def _message_history(conn, case_id, flash=None, **kw):
                                + ", " + e(_when_short(sent[s]["created_at"])) + ")</span>"
                                for s in sorted(sent)) + "</p>")
     out.append(
-        "<h3>Send a message</h3>" + done
-        + '<form method="post" action="/action/send-message" class="panel" data-once>'
+        "<h3>Send a message</h3>" + done + _send_form(case_id, suggested, opts, previews,
+                                                      already))
+    return "".join(out)
+
+
+def _send_form(case_id, suggested, opts, previews, already) -> str:
+    """The Send a message form - or, on a decided case, a note saying the
+    customer's message went with the decision (no form: nothing contradicts it)."""
+    if suggested["situation"] is None and "decided" in suggested["why"]:
+        return (note(e(suggested["why"]) + " Nothing further is sent from here, so no message "
+                     "can contradict the decision.", "info", "Decided")
+                + already)
+    why = ('<p class="suggest"><strong>Suggested:</strong> ' + e(suggested["situation"] or "none")
+           + " &middot; " + e(suggested["why"]) + "</p>")
+    return (
+        '<form method="post" action="/action/send-message" class="panel" data-once>'
         '<input type="hidden" name="case_id" value="' + e(case_id) + '">'
         '<input type="hidden" name="back" value="' + e(tab_href(case_id, "Communications"))
-        + '">' + already
-        + '<div class="field"><label>Situation</label><select name="situation" required>'
-        + opts + "</select>"
-        '<span class="help">Approval, decline and closure messages are not in this list: '
-        "they are sent with the decision you record above (or by the automatic closure "
-        "after 30 days without a reply). A reminder lists whatever the customer still "
-        "owes.</span></div>"
+        + '">' + already + why
+        + '<div class="field"><label>Situation</label>'
+        '<select name="situation" required data-send-previews>' + opts + "</select>"
+        '<span class="help">Filled in from where the case stands; change it if you need '
+        "another. Approval, decline and closure messages are not in this list: they go out "
+        "with the decision you record above, or with the automatic closure after 30 days "
+        "without a reply.</span></div>"
+        '<div class="sendpreview"><span class="sendpreview__k">The customer will read</span>'
+        + "".join(previews) + "</div>"
         '<button class="btn btn--primary" type="submit">Draft and approve as me</button>'
         "</form>")
-    return "".join(out)
 
 
 # ---------------------------------------------------------------------------

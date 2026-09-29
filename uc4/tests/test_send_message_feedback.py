@@ -111,14 +111,53 @@ def test_sending_the_same_situation_again_is_still_allowed(site):
 # Outcome messages are not sent by hand; a reminder needs something owed
 # ---------------------------------------------------------------------------
 
-def test_the_list_opens_on_a_prompt_and_offers_no_outcome_messages(site):
+def test_the_situation_is_filled_in_from_the_case_and_no_outcome_is_offered(site):
+    """Case 2 owes two documents and has not been asked: resubmission, with
+    the exact text shown before anything is sent."""
     section = messages_section(site(render.tab_href(CASE, render.MESSAGES_TAB))[2])
-    select = re.search(r'<select name="situation" required>(.*?)</select>', section, re.S).group(1)
-    assert select.startswith('<option value="" selected disabled>Choose a situation…</option>')
+    select = re.search(r'<select name="situation" required data-send-previews>(.*?)</select>',
+                       section, re.S).group(1)
+    assert '<option value="resubmission" selected>resubmission (suggested)' in select
+    assert '<option value="" disabled>Choose a situation…</option>' in select
     values = re.findall(r'<option value="([a-z_]+)"', select)
     for outcome in ("case_closed", "final_outcome_approved", "final_outcome_declined"):
         assert outcome not in values
     assert {"resubmission", "reminder", "status_update"} <= set(values)
+    assert "Suggested:</strong> resubmission" in section
+    shown = re.search(r'<div class="preview" data-send-preview-for="resubmission">(.*?)</div></div>',
+                      section, re.S).group(1)
+    assert "ubo declaration" in shown and "id document for Denton Halliwell" in shown
+    others = re.findall(r'data-send-preview-for="([a-z_]+)" hidden', section)
+    assert "resubmission" not in others and "status_update" in others
+
+
+def test_the_suggestion_moves_on_as_the_case_does(site):
+    send(site, "resubmission")
+    section = messages_section(site(render.tab_href(CASE, render.MESSAGES_TAB))[2])
+    assert '<option value="reminder" selected>reminder (suggested)' in section
+    one = messages_section(site(render.tab_href("WAL-ONB-0001", render.MESSAGES_TAB))[2])
+    assert '<option value="status_update" selected>status_update (suggested)' in one
+    six = messages_section(site(render.tab_href("WAL-ONB-0006", render.MESSAGES_TAB))[2])
+    assert ('<option value="manual_review_underway" selected>manual_review_underway '
+            "(suggested)") in six, "restricted: the generic holding message"
+
+
+def test_a_decided_case_offers_no_form_and_refuses_a_message(site):
+    conn = console_server._conn
+    from orchestrator.kb import KnowledgeBase
+    from orchestrator.steps import decision
+    decision.record_decision(conn, "WAL-ONB-0010", "analyst.test", "analyst", "approve",
+                             "demo_decision", "clean", [], kb=KnowledgeBase())
+    conn.commit()
+    section = messages_section(site(render.tab_href("WAL-ONB-0010", render.MESSAGES_TAB))[2])
+    assert 'action="/action/send-message"' not in section
+    assert "went out with the decision" in section
+    status, where, _ = site("/action/send-message", {
+        "case_id": "WAL-ONB-0010", "situation": "status_update",
+        "back": render.tab_href("WAL-ONB-0010", "Communications")})
+    assert "err=" in where and "decided" in where
+    assert conn.execute("SELECT COUNT(*) FROM communication WHERE case_id = 'WAL-ONB-0010'"
+                        " AND situation = 'status_update'").fetchone()[0] == 0
 
 
 @pytest.mark.parametrize("outcome", ["case_closed", "final_outcome_approved",
