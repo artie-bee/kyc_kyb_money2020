@@ -105,6 +105,20 @@ def ageing_days(created_at: str) -> int:
     return clock.days_since(created_at)
 
 
+def ago(stamp: str) -> str:
+    """How long ago a stored stamp was, on the injected clock (so it follows the
+    demo clock, never the machine's): "25 min ago", "1 hr ago", "3 hrs ago",
+    "1 day ago", "3 days ago"."""
+    minutes = max(0, int((clock.current().now() - clock.parse(stamp)).total_seconds() // 60))
+    if minutes < 60:
+        return f"{minutes} min ago"
+    hours = minutes // 60
+    if hours < 24:
+        return f"{hours} hr{'' if hours == 1 else 's'} ago"
+    days = hours // 24
+    return f"{days} day{'' if days == 1 else 's'} ago"
+
+
 def dashboard(conn) -> list[dict]:
     """Every case, with what an operations team needs to triage it."""
     out = []

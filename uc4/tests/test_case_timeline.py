@@ -249,7 +249,7 @@ def test_alert_came_in_is_the_current_open_holds_placed_time(site):
                           " AND released_at IS NULL").fetchone()[0]
     assert alert_at("WAL-ONB-0002") == placed == "2026-09-28T09:00:00Z"
     page = render.dashboard(conn)
-    assert "Alert came in (UTC)" in page and "2026-09-28 09:00:00 UTC" in page
+    assert "Alert came in" in page and "2026-09-28 09:00 UTC" in page
 
     fake.advance(2)
     data.add_checklist_item(conn, "WAL-ONB-0002", "bank_statement", "analyst.one", "one more")

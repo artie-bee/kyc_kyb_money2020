@@ -270,6 +270,20 @@ def _customer_card(conn, case_id) -> str:
 # 10.1 Operations dashboard
 # ---------------------------------------------------------------------------
 
+NO_ALERT = "—"
+
+
+def _alert_cell(stamp) -> str:
+    """"2026-09-29 09:10 UTC · 25 min ago", or a dash when no alert is open. The
+    sort key is the stored time, so the column sorts oldest first, dashes last."""
+    if not stamp:
+        return ('<td class="cell-alert" data-key="~">'
+                '<span class="muted" title="no open alert">' + NO_ALERT + "</span></td>")
+    return ('<td class="cell-alert" data-key="' + e(stamp) + '">'
+            '<span class="nowrap">' + e(stamp[:16].replace("T", " ") + " UTC") + "</span>"
+            ' <span class="muted nowrap">&middot; ' + e(data.ago(stamp)) + "</span></td>")
+
+
 def dashboard(conn, **kw) -> str:
     rows = data.dashboard(conn)
     open_cases = [r for r in rows if r["status"] not in CLOSED]
@@ -287,20 +301,10 @@ def dashboard(conn, **kw) -> str:
             if r["open_holds"] else '<span class="muted">0</span>'
         detail = ('<span class="detail" title="' + e(r["hold_detail"]) + '">'
                   + cell(r["hold_detail"]) + "</span>")
-        w = r["waiting"]
-        if w:
-            since = (e(w["since"][:10]) + ' <span class="muted">(' + str(w["days"]) + " day"
-                     + ("" if w["days"] == 1 else "s") + ")</span>")
-            viewed = (e(w["last_viewed"].replace("T", " ").rstrip("Z") + " UTC")
-                      if w["last_viewed"] else '<span class="muted">View not recorded</span>')
-            due = (e(w["next_due"] + " UTC") + ' <span class="muted">(' + e(w["next_kind"])
-                   + ")</span>" if w["next_due"] else em_dash("no further reminder scheduled"))
-        else:
-            since = viewed = due = em_dash("the customer owes nothing")
         body.append(
             '<tr class="rowlink" data-href="/case/' + e(r["case_id"]) + '"'
             ' data-status="' + e(r["status"]) + '"'
-            ' data-waiting="' + ("1" if w else "0") + '"'
+            ' data-waiting="' + ("1" if r["waiting"] else "0") + '"'
             ' data-owner="' + e(r["owner"]) + '">'
             '<td class="cell-id"><a href="/case/' + e(r["case_id"]) + '">'
             + idtag(r["case_id"]) + "</a>" + flag + "</td>"
@@ -312,11 +316,7 @@ def dashboard(conn, **kw) -> str:
             '<td class="ta-r">' + score + "</td>"
             '<td class="ta-r">' + holds + "</td>"
             '<td class="cell-detail">' + detail + "</td>"
-            '<td class="cell-wait">' + (e(r["alert_at"].replace("T", " ").rstrip("Z") + " UTC")
-                                        if r["alert_at"] else "") + "</td>"
-            '<td class="cell-wait">' + since + "</td>"
-            '<td class="cell-wait">' + viewed + "</td>"
-            '<td class="cell-wait">' + due + "</td>"
+            + _alert_cell(r["alert_at"]) +
             "</tr>")
 
     def boxes(name, values):
@@ -333,18 +333,10 @@ def dashboard(conn, **kw) -> str:
             '<th scope="col" data-sort="num" class="ta-r">Score</th>'
             '<th scope="col" data-sort="num" class="ta-r">Holds</th>'
             '<th scope="col">Hold detail</th>'
-            '<th scope="col" data-sort="text">Alert came in (UTC)'
+            '<th scope="col" data-sort="text">Alert came in'
             + help_mark("When the case's current alert - its most recent open hold - was "
-                        "placed. Blank when nothing is open.") + "</th>"
-            '<th scope="col" data-sort="text">Waiting on customer since (UTC)'
-            + help_mark("Counted from the first request, and never reset by a new upload. "
-                        "Shown only while the customer owes an item.") + "</th>"
-            '<th scope="col" data-sort="text">Last message viewed (UTC)</th>'
-            '<th scope="col" data-sort="text">Next reminder due (UTC)'
-            + help_mark("From kb/communication_schedule.csv, counted from the first request: "
-                        "the single reminder, or the optional early nudge if it is switched "
-                        "on and due first. Viewing a message never moves the reminder.",
-                        edge=True) + "</th>")
+                        "placed, and how long ago on the demo clock. A dash when nothing is "
+                        "open. Sorts oldest first.", edge=True) + "</th>")
     waiting = sum(1 for r in rows if r["waiting"])
 
     n = len(rows)

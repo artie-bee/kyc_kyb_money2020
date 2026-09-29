@@ -118,18 +118,17 @@ def test_the_dashboard_shows_follow_up_timing_for_cases_2_and_14(env):
     data.record_messages_viewed(conn, CASE, [comm])
     page = render.dashboard(conn)
     fourteen, two, one = row(page, CASE), row(page, "WAL-ONB-0002"), row(page, "WAL-ONB-0001")
+    # the dashboard keeps the filter; the timing columns moved to the case detail
     assert 'data-waiting="1"' in fourteen and 'data-waiting="1"' in two
     assert 'data-waiting="0"' in one
-    assert "2026-09-28 <span class=\"muted\">(5 days)</span>" in fourteen, \
-        "counted from the first request"
-    assert "2026-10-03 09:00:00 UTC" in fourteen, "the customer's view"
-    assert "View not recorded" in two
-    assert "2026-10-12 UTC" in fourteen and "(reminder)" in fourteen
-    for heading in ("Waiting on customer since (UTC)", "Last message viewed (UTC)",
-                    "Next reminder due (UTC)"):
-        assert heading in page
     waiting = sum(1 for r in data.dashboard(conn) if r["waiting"])
     assert f'name="waiting" value="1"><span>Waiting on customer ({waiting})' in page
+    for heading in ("Waiting on customer since", "Last message viewed", "Next reminder due"):
+        assert heading not in page
+    detail = render.case_detail(conn, CASE, tab=render.MESSAGES_TAB)
+    assert "2026-10-03 09:00:00 UTC" in detail, "the customer's view, on the follow-up panel"
+    assert "2026-10-12 UTC" in detail, "the next reminder due"
+    assert "Reminder due 2026-10-12" in render.case_detail(conn, CASE, tab="Timeline")
 
 
 def test_a_closed_case_is_not_waiting_on_the_customer(env):

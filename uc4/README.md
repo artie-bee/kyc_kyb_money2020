@@ -588,10 +588,14 @@ remaining blocker. Reminders stop when nothing is owed any more
 unreadable uploads) or the case is closed. A re-upload re-runs Step 3 for that
 checklist item only.
 
-The operations dashboard adds, for every case where the customer owes an item:
-"Waiting on customer since" (the first request, with days), "Last message
-viewed" (or "View not recorded") and "Next reminder due", all in UTC, with a
-"Waiting on customer" filter (communication.waiting_timing).
+The operations dashboard has one time column, "Alert came in": when the case's
+current open hold was placed, as "2026-09-29 09:10 UTC · 25 min ago" (min / hrs /
+days, measured on the injected clock, so it follows the demo clock), a dash when
+nothing is open, sorting oldest first. A "Waiting on customer" filter
+(communication.waiting_timing) picks the cases where the customer owes an item;
+their timing - waiting since, last view, next reminder - is on the case detail
+(follow-up panel and timeline). Case and Applicant stay pinned on the left if the
+table has to scroll sideways.
 
 Optional early nudge: `unviewed_nudge` in kb/communication_schedule.csv, 0 (off)
 by default. Set to N days and a request the customer has not viewed after N days

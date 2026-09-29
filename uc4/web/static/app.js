@@ -139,13 +139,20 @@
       dir[i] = desc ? "descending" : "ascending";
       var num = th.dataset.sort === "num";
       rows.sort(function (a, b) {
-        var x = a.cells[i].textContent.trim(), y = b.cells[i].textContent.trim();
+        // a cell may carry its own sort key (a time, say), else its text
+        var x = a.cells[i].dataset.key || a.cells[i].textContent.trim(),
+            y = b.cells[i].dataset.key || b.cells[i].textContent.trim();
         if (num) {
           // an em dash means "not scored", which sorts below every real number
           var nx = parseFloat(x), ny = parseFloat(y);
           if (isNaN(nx)) nx = -1;
           if (isNaN(ny)) ny = -1;
           return desc ? ny - nx : nx - ny;
+        }
+        if (a.cells[i].dataset.key) {
+          // plain code-point order, so an ISO time key sorts oldest first and "~" last
+          var c = x < y ? -1 : x > y ? 1 : 0;
+          return desc ? -c : c;
         }
         return desc ? y.localeCompare(x) : x.localeCompare(y);
       });

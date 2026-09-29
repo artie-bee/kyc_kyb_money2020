@@ -271,7 +271,20 @@ tr.rowlink a { text-decoration:none; }
 .cell-id { white-space:nowrap; }
 .cell-name { font-weight:520; min-width:180px; }
 .cell-type { white-space:nowrap; }
-.cell-detail { max-width:300px; }
+.cell-detail { max-width:240px; }
+.cell-alert { min-width:150px; font-size:12.5px; }
+.nowrap { white-space:nowrap; }
+
+/* The dashboard: Case and Applicant stay in view even if the other columns
+   need a sideways scroll on a narrow screen. */
+#cases th:nth-child(1), #cases td:nth-child(1) { position:sticky; left:0; z-index:2;
+  width:150px; min-width:150px; }
+#cases th:nth-child(2), #cases td:nth-child(2) { position:sticky; left:150px; z-index:2;
+  box-shadow:1px 0 0 var(--line); }
+#cases thead th:nth-child(-n+2) { z-index:3; }
+#cases tbody td:nth-child(-n+2) { background:var(--surface); }
+#cases tbody tr.rowlink:hover td:nth-child(-n+2) {
+  background:linear-gradient(var(--accent-soft), var(--accent-soft)), var(--surface); }
 .cell-wide { min-width:260px; }
 
 .id { font-family:var(--mono); font-size:11.5px; letter-spacing:-.01em;
