@@ -1,0 +1,16 @@
+__pycache__/
+*.pyc
+*.zip
+onboarding.db
+# the id floors kept beside a database, so ids are never reused after a rebuild
+*.ids.json
+exports/
+sample_documents/
+# eval_report.md is committed deliberately: every document in this project
+# is synthetic, so the report carries no real customer data. Restore the
+# ignore before pointing tools/evaluate_live.py at anything real.
+*.log
+.env
+.env.*
+uploads/
+portal_applications/
