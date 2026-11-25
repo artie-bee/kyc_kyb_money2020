@@ -15,8 +15,10 @@ same way:
   - the narrative is internal. evidence_pack.py stores it in the pack and
     nowhere a customer could be shown.
 
-    MockNarrator    replays the scripted text (tests, demos)
-    ClaudeNarrator  asks Claude  (STUB - see below)
+    MockNarrator    replays the scripted text (tests, demos) - the default
+    LiveNarrator    the LLM_PROVIDER model (Groq, xAI or Anthropic) writes the
+                    case summary; on with WALLESTER_UC4_NARRATOR=live
+    ClaudeNarrator  asks Claude  (STUB - see below; LiveNarrator covers Claude too)
 """
 
 from dataclasses import dataclass, field
@@ -127,10 +129,74 @@ class ClaudeNarrator(Narrator):
         self._stub()
 
 
-NARRATORS = {"mock": MockNarrator, "claude": ClaudeNarrator}
+class LiveNarrator(Narrator):
+    """The case summary written by a real model: whichever LLM_PROVIDER selects
+    (groq, xai or anthropic), through llm_client, with prompts/narrative_v1.txt.
+
+    Only the compliance narrative (the "Case summary prepared for you" panel) is
+    written live. The per-factor explanations in Step 7 stay the KB's own text.
+
+    The model is handed the pack with the band, score, factors and next action
+    already computed, and asked to describe them. What comes back must parse as
+    {"text", "evidence_refs", "confidence"} and pass Narrative.validate() against
+    the ids on the case. If the call fails, or the reply cites an id that does
+    not exist, the template text is used instead and the audit row says so -
+    a case never stops because a summary could not be written.
+    """
+
+    mode = "live"
+    PROMPT_VERSION = "v1"
+    MAX_TOKENS = 900
+
+    def __init__(self, client=None):
+        from . import llm_client
+        self._llm = llm_client
+        self._client = client               # tests pass a fake; None = the configured one
+        self._fallback = MockNarrator()
+        self.version = None
+
+    def explain_factor(self, factor: dict, context: dict) -> Narrative:
+        return self._fallback.explain_factor(factor, context)
+
+    def compliance_narrative(self, pack: dict, known_ids: set[str]) -> Narrative:
+        import json
+        prompt = self._llm.load_prompt("narrative", self.PROMPT_VERSION)
+        instruction = ("Evidence pack:\n" + json.dumps(pack, indent=1, default=str)
+                       + "\n\nKnown evidence ids on this case:\n"
+                       + json.dumps(sorted(known_ids)))
+        try:
+            client = self._client or self._llm.get_client()
+            call = client.ask(None, prompt, instruction, max_tokens=self.MAX_TOKENS)
+            narrative = Narrative(text=str(call.data.get("text") or "").strip(),
+                                  evidence_refs=[str(r) for r in call.data.get("evidence_refs") or []],
+                                  confidence=float(call.data.get("confidence", 0.0)))
+            if not narrative.text:
+                raise ValueError("the reply had no text")
+            narrative.validate(known_ids)
+        except Exception as e:                               # noqa: BLE001
+            # Recorded, not hidden: the audit row and the panel both say the
+            # template was used and why.
+            reason = f"{type(e).__name__}: {e}"[:200]
+            self.mode = f"mock (live summary failed - {reason})"
+            self.version = "template - the live summary call failed"
+            return self._fallback.compliance_narrative(pack, known_ids)
+
+        self.mode = f"live ({call.provider})"
+        self.version = f"{call.provider}/{call.model}/{call.prompt_version}"
+        return narrative
 
 
-def get_narrator(mode: str = "mock") -> Narrator:
+NARRATORS = {"mock": MockNarrator, "claude": ClaudeNarrator, "live": LiveNarrator}
+
+
+def narrator_setting() -> str:
+    """WALLESTER_UC4_NARRATOR, read when a case runs. Mock unless set."""
+    import os
+    return (os.environ.get("WALLESTER_UC4_NARRATOR") or "mock").strip().lower()
+
+
+def get_narrator(mode: str | None = None) -> Narrator:
+    mode = mode or narrator_setting()
     if mode not in NARRATORS:
         raise ValueError(f"unknown narrator mode '{mode}'; choose from {sorted(NARRATORS)}")
     return NARRATORS[mode]()

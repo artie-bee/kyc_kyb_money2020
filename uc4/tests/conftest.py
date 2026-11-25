@@ -27,7 +27,8 @@ def fixed_clock():
 # Settings a developer's shell may carry (LLM_PROVIDER=groq, say) that would make
 # a test's outcome depend on the machine it runs on. Each test starts without
 # them; a test that needs one sets it with monkeypatch.
-_SHELL_SETTINGS = ("LLM_PROVIDER", "WALLESTER_UC4_MODEL", "WALLESTER_UC4_TEMPERATURE")
+_SHELL_SETTINGS = ("LLM_PROVIDER", "WALLESTER_UC4_MODEL", "WALLESTER_UC4_TEMPERATURE",
+                   "WALLESTER_UC4_NARRATOR")
 
 
 @pytest.fixture(autouse=True)

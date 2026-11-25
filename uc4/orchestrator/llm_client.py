@@ -227,9 +227,12 @@ class LLMClient:
         raise NotImplementedError
 
     # -- what every provider gets -----------------------------------------
-    def ask(self, document_path: Path, prompt: Prompt, instruction: str,
+    def ask(self, document_path: Path | None, prompt: Prompt, instruction: str,
             max_tokens: int = 1500) -> Call:
         """Send one document and one prompt; return parsed JSON, retried once.
+
+        `document_path` may be None for a text-only request - the case summary,
+        which is written from rows already in the database, not read off a file.
 
         The retry repeats the request with a reminder that the format was wrong.
         Two attempts and no more: a model that will not produce the format twice
@@ -243,7 +246,8 @@ class LLMClient:
         for attempt in range(1, MAX_ATTEMPTS + 1):
             try:
                 raw, tok_in, tok_out, transport = self._send(
-                    Path(document_path), text, max_tokens, corrections)
+                    Path(document_path) if document_path is not None else None,
+                    text, max_tokens, corrections)
             except CallFailed:
                 raise
             except Exception as e:                  # network, auth, rate limit
@@ -296,7 +300,8 @@ class AnthropicClient(LLMClient):
                 "pip install anthropic") from e
 
         client = anthropic.Anthropic(api_key=api_key(self.provider))
-        content = [self._block(document_path), {"type": "text", "text": text}]
+        content = ([self._block(document_path)] if document_path is not None else []) \
+            + [{"type": "text", "text": text}]
         for note in corrections:
             content.append({"type": "text", "text": note})
 
@@ -439,7 +444,8 @@ class OpenAICompatibleClient(LLMClient):
             f"(jpg, jpeg and png only, or a PDF this client rasterises)")
 
     def _send(self, document_path, text, max_tokens, corrections):
-        parts, transport = self._image_parts(document_path)
+        parts, transport = (self._image_parts(document_path) if document_path is not None
+                            else ([], "text only: no document sent"))
         content = parts + [{"type": "text", "text": text}]
         for note in corrections:
             content.append({"type": "text", "text": note})

@@ -52,8 +52,11 @@ def test_live_mode_is_a_placeholder_and_says_so():
 
 
 def test_every_mode_defaults_to_mock():
-    assert (QUALITY_CHECKER_MODE, EXTRACTOR_MODE, PROVIDER_MODE, MEDIA_ASSESSOR_MODE,
-            NARRATOR_MODE) == ("mock",) * 5
+    assert (QUALITY_CHECKER_MODE, EXTRACTOR_MODE, PROVIDER_MODE,
+            MEDIA_ASSESSOR_MODE) == ("mock",) * 4
+    # The narrator reads WALLESTER_UC4_NARRATOR when a case runs; unset, it is mock.
+    from orchestrator.narrator import get_narrator
+    assert NARRATOR_MODE is None and get_narrator(NARRATOR_MODE).mode == "mock"
     assert get_checker().mode == "mock" and get_extractor().mode == "mock"
 
 

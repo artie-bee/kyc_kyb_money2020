@@ -31,8 +31,10 @@ EXTRACTOR_MODE = "mock"
 PROVIDER_MODE = "mock"
 # The adverse-media relevance call in Step 6. "claude" is a stub and raises.
 MEDIA_ASSESSOR_MODE = "mock"
-# The written parts of Steps 7 and 8. "claude" is a stub and raises.
-NARRATOR_MODE = "mock"
+# The written parts of Steps 7 and 8. None reads WALLESTER_UC4_NARRATOR when a
+# case runs: "mock" (the default) assembles the summary from a template, "live"
+# has the LLM_PROVIDER model write it (narrator.LiveNarrator).
+NARRATOR_MODE = None
 
 STEPS = {
     "requirement_pack": requirement_pack.run,
@@ -50,7 +52,7 @@ def process_application(conn, application: dict, kb: KnowledgeBase,
                         extractor_mode: str = EXTRACTOR_MODE,
                         provider_mode: str = PROVIDER_MODE,
                         media_mode: str = MEDIA_ASSESSOR_MODE,
-                        narrator_mode: str = NARRATOR_MODE) -> dict:
+                        narrator_mode: str | None = NARRATOR_MODE) -> dict:
     trace = {"application_id": application.get("application_id")}
 
     result = intake.run(conn, application, kb)
@@ -135,7 +137,7 @@ def resume(conn, case_id: str, application: dict, kb: KnowledgeBase,
            extractor_mode: str = EXTRACTOR_MODE,
            provider_mode: str = PROVIDER_MODE,
            media_mode: str = MEDIA_ASSESSOR_MODE,
-           narrator_mode: str = NARRATOR_MODE) -> dict:
+           narrator_mode: str | None = NARRATOR_MODE) -> dict:
     """Carry an existing case forward from where it stopped.
 
     Intake and the requirement pack have already run; this picks up at a later
@@ -231,7 +233,7 @@ class RerunRefused(ValueError):
 def rerun_verification(conn, case_id: str, application: dict, kb: KnowledgeBase,
                        analyst_id: str, reason: str,
                        provider_mode: str = PROVIDER_MODE,
-                       narrator_mode: str = NARRATOR_MODE) -> dict:
+                       narrator_mode: str | None = NARRATOR_MODE) -> dict:
     """Re-run verification and the risk assessment, because an analyst chose to.
 
     The only path by which the paid checks run a second time. It needs a named

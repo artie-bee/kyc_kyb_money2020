@@ -345,7 +345,11 @@ with a reason and each audited:
 
 ## Settings
 
-Read from the environment; the defaults are the demo's.
+Read from the environment; the defaults are the demo's. The easiest place to set
+them is `uc4/.env`: copy `.env.example` to `.env`, paste your `GROQ_API_KEY`,
+and restart the servers. The start-up scripts in `tools/` read it first
+(`orchestrator/env_file.py`); a value there wins over Windows' own, and the file
+is git-ignored so the key is never committed.
 
 | Variable | Default | What it sets |
 |---|---|---|
@@ -356,6 +360,7 @@ Read from the environment; the defaults are the demo's.
 | `WALLESTER_UC4_EXTRACTION_FOR_NEW_UPLOADS` | `mock_only` | `live_if_available` reads new, unrecognised portal uploads with the live model (see *Hybrid extraction*) |
 | `WALLESTER_UC4_LIVE_READ_INTERVAL` | `3` | Seconds between the background reader's live calls |
 | `LLM_PROVIDER` | `anthropic` | Which model answers in live mode (see *Live mode*) |
+| `WALLESTER_UC4_NARRATOR` | `mock` | `live`: the `LLM_PROVIDER` model (e.g. Groq, with `GROQ_API_KEY`) writes the case summary (`prompts/narrative_v1.txt`) when a case reaches Step 8. It only describes the band, score and next action already computed, every evidence id it cites is checked, and if the call fails the template summary is used and the audit row says so. Independent of `LIVE_MODE_READY` |
 
 **One clock.** Every timestamp, expiry and "waited N days" reads the injected
 clock in `orchestrator/clock.py`. The running servers use the real UTC time.

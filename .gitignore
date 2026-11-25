@@ -12,5 +12,7 @@ sample_documents/
 *.log
 .env
 .env.*
+# the template is committed; the real .env with your key never is
+!.env.example
 uploads/
 portal_applications/

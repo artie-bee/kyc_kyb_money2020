@@ -19,6 +19,10 @@ from pathlib import Path
 UC4 = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(UC4))
 
+if __name__ == "__main__":       # started as a tool, not imported: read uc4/.env first
+    from orchestrator import env_file                                 # noqa: E402
+    print(env_file.note(env_file.load()))
+
 from app import data                                                  # noqa: E402
 from web import server                                                # noqa: E402
 

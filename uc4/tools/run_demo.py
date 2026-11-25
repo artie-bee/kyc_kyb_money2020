@@ -24,6 +24,10 @@ from pathlib import Path
 UC4 = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(UC4))
 
+if __name__ == "__main__":       # started as a tool, not imported: read uc4/.env first
+    from orchestrator import env_file                                 # noqa: E402
+    print(env_file.note(env_file.load()))
+
 from orchestrator import db, holds                                  # noqa: E402
 from orchestrator.clock import DEMO_START, FakeClock, use           # noqa: E402
 from orchestrator.kb import KnowledgeBase                           # noqa: E402
