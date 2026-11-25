@@ -95,14 +95,35 @@
   // ---- decision tab: customer message preview ---------------------------
   // Every decision's preview is on the page; show only the one selected.
   // With scripts off they all stay visible, each under its decision.
+  // The reason list shows only the chosen decision's codes, and the preview
+  // follows the pair: the reason can change the message.
   var choice = document.querySelector("select[data-previews]");
   if (choice) {
+    var reasons = document.querySelector("select[data-reasons]");
+    var fitReasons = function () {
+      if (!reasons) { return; }
+      var keep = null;
+      Array.prototype.forEach.call(reasons.querySelectorAll("optgroup"), function (g) {
+        var label = g.getAttribute("label");
+        var mine = label === choice.value || label === "any decision";
+        g.hidden = !mine;
+        g.disabled = !mine;
+        if (label === choice.value && !keep) { keep = g.querySelector("option"); }
+      });
+      var cur = reasons.options[reasons.selectedIndex];
+      if (!cur || cur.parentNode.disabled) { if (keep) { keep.selected = true; } }
+    };
     var showPreview = function () {
+      var r = reasons ? reasons.value : "";
       Array.prototype.forEach.call(document.querySelectorAll("[data-preview-for]"), function (p) {
-        p.hidden = p.getAttribute("data-preview-for") !== choice.value;
+        var codes = (p.getAttribute("data-preview-reasons") || "").split(" ");
+        p.hidden = p.getAttribute("data-preview-for") !== choice.value ||
+                   (codes[0] !== "" && codes.indexOf(r) === -1);
       });
     };
-    choice.addEventListener("change", showPreview);
+    choice.addEventListener("change", function () { fitReasons(); showPreview(); });
+    if (reasons) { reasons.addEventListener("change", showPreview); }
+    fitReasons();
     showPreview();
   }
 

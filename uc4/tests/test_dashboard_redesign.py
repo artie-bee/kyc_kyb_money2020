@@ -109,13 +109,14 @@ def test_every_tile_bar_legend_row_and_strip_block_filters_to_exactly_its_cases(
 
 def test_the_table_keeps_its_columns_is_oldest_first_and_has_plain_words(conn):
     page = render.dashboard(conn)
-    head = re.findall(r'<th scope="col"[^>]*>(\w[\w ]*)', page.split('id="cases"')[1])
+    head = re.findall(r'<th scope="col"[^>]*>(\w[\w /-]*\w)', page.split('id="cases"')[1])
     assert head == ["Case", "Status", "Owner", "Band", "Score", "Holds", "Hold detail",
-                    "Alert came in"]
+                    "Alert came in", "Alert closed", "Acknowledged / follow-up"]
     keys = [k for k in re.findall(r'<td class="cell-alert" data-key="([^"]+)"', page)]
-    alerted = [k for k in keys if k != "~"]
-    assert alerted == sorted(alerted) and keys[len(alerted):] == ["~"] * (len(keys)
-                                                                          - len(alerted))
+    alerted = [k for k in keys if not k.startswith("~")]
+    # open alerts oldest first; closed alerts and cases with none after them
+    assert alerted == sorted(alerted)
+    assert all(k.startswith("~") for k in keys[len(alerted):])
     body = page.split('id="cases"')[1]
     for status in render.STATUS_WORDS:
         assert ">" + status + "<" not in body, "status in plain words, not its code"

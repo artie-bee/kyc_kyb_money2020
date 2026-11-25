@@ -483,8 +483,7 @@ def build_demo_pack(out: Path, today=None) -> dict:
     (folder / "manifest.json").write_text(json.dumps(
         {"label": demo_samples.LABEL, "generated_for": today.isoformat(),
          "company": PACK_COMPANY,
-         # what the simulated register holds for the pack's company, for the
-         # form's "Look up my company"
+         # what the simulated register holds for the pack's company
          "register": {"number": PACK_REG, "name": PACK_COMPANY, "address": PACK_ADDRESS},
          "files": files}, indent=2, ensure_ascii=False) + "\n",
         encoding="utf-8")
@@ -514,17 +513,91 @@ def build_demo_pack(out: Path, today=None) -> dict:
     return {"folder": folder, "files": files}
 
 
+# ---------------------------------------------------------------------------
+# The Lumen Harbour follow-up: the ownership chart asked for after review
+# ---------------------------------------------------------------------------
+#
+# Committed, with fixed bytes, in demo_packs/lumen_harbour_followup/: the
+# ownership chart TPL-0003 asks for, answering the item it adds to the
+# checklist. It carries no register entry - the Lumen Harbour pack above has it.
+
+FOLLOWUP_DIR = UC4 / "demo_packs" / "lumen_harbour_followup"
+FOLLOWUP_CHART = "13_ownership_chart.pdf"
+FOLLOWUP_DATE = "2026-09-29"
+FOLLOWUP_FIELDS = [
+    ("intermediate_entity", "None - no company, trust or nominee between the owner "
+                            "and the business"),
+    ("chart_summary", f"{PACK_PERSON} holds 100% of {PACK_COMPANY} ({PACK_REG}) directly, "
+                      "in her own name; she is also its only director"),
+]
+
+
+def ownership_chart():
+    """The chart: the labelled values, then the structure drawn as two boxes."""
+    from PIL import ImageDraw
+    document = {"document_type": "ownership_chart", "document_id": "PACK-13",
+                "case_id": "demo pack"}
+    fields = [{"name": k, "value": v} for k, v in FOLLOWUP_FIELDS]
+    img = paper(document, fields, f"Issued for {PACK_COMPANY} ({PACK_REG}), EE"
+                                  f" - chart dated {FOLLOWUP_DATE}")
+    d = ImageDraw.Draw(img)
+    boxes = [(PACK_PERSON, f"Born {PACK_DOB}, Estonia", 760),
+             (PACK_COMPANY, f"Registration {PACK_REG}", 1080)]
+    for name, sub, top in boxes:
+        d.rectangle([370, top, 870, top + 130], outline=(40, 40, 40), width=3)
+        d.text((400, top + 25), name, font=_font(30), fill=(20, 20, 20))
+        d.text((400, top + 75), sub, font=_font(20), fill=(90, 90, 90))
+    d.line([620, 890, 620, 1070], fill=(40, 40, 40), width=3)
+    d.polygon([(606, 1050), (634, 1050), (620, 1076)], fill=(40, 40, 40))
+    d.text((640, 960), "100% of the shares, held directly", font=_font(22), fill=(20, 20, 20))
+    d.text((100, 1300), "Ultimate beneficial owner: " + PACK_PERSON + " (100%).",
+           font=_font(22), fill=(20, 20, 20))
+    d.text((100, 1340), "No intermediate company, trust or nominee.", font=_font(22),
+           fill=(20, 20, 20))
+    return img
+
+
+def build_lumen_followup_pack(folder: Path = FOLLOWUP_DIR) -> dict:
+    """Write the ownership chart and its manifest into demo_packs/lumen_harbour_followup/."""
+    import hashlib
+    import json
+    from orchestrator import demo_samples
+
+    folder.mkdir(parents=True, exist_ok=True)
+    path = folder / FOLLOWUP_CHART
+    save_pdf(ownership_chart(), path, f"{FOLLOWUP_DATE}T09:00:00Z")
+    files = {hashlib.sha256(path.read_bytes()).hexdigest(): {
+        "file": FOLLOWUP_CHART, "document_type": "ownership_chart", "person": None,
+        "quality_flags": [], "expiry_date": None, "document_date": FOLLOWUP_DATE,
+        "fields": [{"name": k, "value": v, "confidence": 0.98, "source_page": 1}
+                   for k, v in FOLLOWUP_FIELDS]}}
+    (folder / "manifest.json").write_text(json.dumps(
+        {"label": demo_samples.LABEL, "company": PACK_COMPANY,
+         "note": "Fictional ownership chart (marked SPECIMEN) for Lumen Harbour OU, the "
+                 "document the ownership request (TPL-0003) asks for after review. Fixed "
+                 "bytes: dated " + FOLLOWUP_DATE + ".",
+         "files": files}, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    return {"folder": folder, "files": files}
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(description="Generate the demo document files.")
     ap.add_argument("--dataset", type=Path, default=DEFAULT_DATASET)
     ap.add_argument("--out", type=Path, default=DEFAULT_OUT)
     ap.add_argument("--cases", nargs="*", default=list(DEMO_CASES))
+    ap.add_argument("--lumen-followup", action="store_true",
+                    help="only write the Lumen Harbour ownership chart pack "
+                         "(demo_packs/lumen_harbour_followup/)")
     args = ap.parse_args()
 
     try:
         import PIL  # noqa: F401
     except ImportError:
         raise SystemExit("Pillow is needed to draw the documents: pip install pillow")
+    if args.lumen_followup:
+        pack = build_lumen_followup_pack()
+        print(f"Lumen Harbour follow-up: {len(pack['files'])} file in {pack['folder']}")
+        return
 
     made = build(args.dataset, args.out, tuple(args.cases))
     by_case = {}

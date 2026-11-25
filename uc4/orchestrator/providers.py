@@ -408,7 +408,7 @@ def get_screening_provider(mode: str = "mock", application: dict | None = None):
 
 
 # ---------------------------------------------------------------------------
-# "Look up my company" on the portal's demo application form
+# What the mock register holds for a registration number (demo packs' register rows)
 # ---------------------------------------------------------------------------
 
 SIMULATED_LOOKUP = "Simulated registry lookup"

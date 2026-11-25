@@ -288,7 +288,7 @@ def test_the_matching_pack_reaches_ready_for_decision_and_only_a_person_approves
     assert status(conn, case_id) == "ready_for_decision", "nothing approves it by itself"
 
     result = data.record_decision(conn, case_id, "analyst.test", "analyst", "approve",
-                                  "demo_decision", "documents and checks complete")
+                                  "all_mandatory_checks_passed", "documents and checks complete")
     assert result.status == "approved" and status(conn, case_id) == "approved"
     decision = conn.execute("SELECT reviewer, reviewer_role FROM human_decision"
                             " WHERE case_id = ?", (case_id,)).fetchone()

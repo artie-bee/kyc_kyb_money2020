@@ -1,0 +1,29 @@
+{
+  "label": "mock: recognised demo sample file",
+  "company": "Lumen Harbour OU",
+  "note": "Fictional ownership chart (marked SPECIMEN) for Lumen Harbour OU, the document the ownership request (TPL-0003) asks for after review. Fixed bytes: dated 2026-09-29.",
+  "files": {
+    "09d08dd2913f4bff3571194602eaaa52393e5342bbdb7d2878c5b6b6cd808ea4": {
+      "file": "13_ownership_chart.pdf",
+      "document_type": "ownership_chart",
+      "person": null,
+      "quality_flags": [],
+      "expiry_date": null,
+      "document_date": "2026-09-29",
+      "fields": [
+        {
+          "name": "intermediate_entity",
+          "value": "None - no company, trust or nominee between the owner and the business",
+          "confidence": 0.98,
+          "source_page": 1
+        },
+        {
+          "name": "chart_summary",
+          "value": "Kristiina Vaher holds 100% of Lumen Harbour OU (EE-16550321) directly, in her own name; she is also its only director",
+          "confidence": 0.98,
+          "source_page": 1
+        }
+      ]
+    }
+  }
+}

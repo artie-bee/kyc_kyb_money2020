@@ -1,24 +1,36 @@
-code,applies_to,description,code_status
-all_mandatory_checks_passed,approve|conditional_approve,Every required check returned a pass and nothing was outstanding,poc_placeholder - Wallester to confirm
-low_risk_standard_profile,approve|conditional_approve,A standard profile with no factors above the low band,poc_placeholder - Wallester to confirm
-conditions_attached_pending_evidence,conditional_approve,Opened subject to evidence the applicant still owes,poc_placeholder - Wallester to confirm
-registered_address_mismatch,request_more_information|conditional_approve,The address on the register does not match the documents supplied,poc_placeholder - Wallester to confirm
-director_mismatch,request_more_information,The declared directors do not match the register,poc_placeholder - Wallester to confirm
-ownership_structure_unclear,request_more_information|enhanced_due_diligence,The ownership chain is not corroborated or not fully explained,poc_placeholder - Wallester to confirm
-document_quality_unresolved,request_more_information,A document could not be relied on and a clearer copy is needed,poc_placeholder - Wallester to confirm
-pep_match_edd_required,enhanced_due_diligence|escalate,A subject is a politically exposed person or a close associate,poc_placeholder - Wallester to confirm
-adverse_media_moderate,enhanced_due_diligence,Moderate adverse media of relevance to a subject,poc_placeholder - Wallester to confirm
-serious_adverse_media,escalate|enhanced_due_diligence|reject,Serious adverse media of relevance to a subject,poc_placeholder - Wallester to confirm
-high_risk_jurisdiction_or_industry,enhanced_due_diligence,The jurisdiction or declared activity carries elevated risk,poc_placeholder - Wallester to confirm
-possible_sanctions_match,escalate,An unresolved possible sanctions match that only a human may settle,poc_placeholder - Wallester to confirm
-confirmed_sanctions_match_on_ubo,escalate|reject,A confirmed sanctions match on a beneficial owner,poc_placeholder - Wallester to confirm
-confirmed_sanctions_match_on_director,escalate|reject,A confirmed sanctions match on a director or signatory,poc_placeholder - Wallester to confirm
-entity_not_active_on_register,reject,The register does not show the entity as active,poc_placeholder - Wallester to confirm
-eligibility_outside_appetite,reject,The applicant falls outside the stated onboarding appetite,poc_placeholder - Wallester to confirm
-identity_verification_failed,reject|insufficient_evidence,An identity check returned fail or could not be completed,poc_placeholder - Wallester to confirm
-identity_failure_and_provider_non_answer,insufficient_evidence,An identity failure alongside a provider that returned no result,poc_placeholder - Wallester to confirm
-provider_unavailable_no_result,insufficient_evidence,A provider returned no result after a retry and nothing can be concluded,poc_placeholder - Wallester to confirm
-evidence_gap_unresolved,insufficient_evidence,A gap in the evidence that the applicant has not closed,poc_placeholder - Wallester to confirm
-applicant_withdrew,withdrawn,The applicant asked to withdraw the application,poc_placeholder - Wallester to confirm
-no_response_from_applicant,withdrawn,Closed after the reminder schedule ran out with no reply,poc_placeholder - Wallester to confirm
-demo_decision,*,Placeholder used when walking through the demo; not a production code,poc_placeholder - Wallester to confirm
+code,applies_to,description,code_status,offered
+all_mandatory_checks_passed,approve,Every required check returned a pass and nothing was outstanding,poc_placeholder - Wallester to confirm,true
+approved_with_limits,conditional_approve,Acceptable with a condition on use - for example a lower card or spend limit,poc_placeholder - Wallester to confirm,true
+approved_with_periodic_review,conditional_approve,Acceptable with a condition to review the relationship again - for example after six months,poc_placeholder - Wallester to confirm,true
+minor_discrepancy_explained,conditional_approve,A small discrepancy has been explained and is accepted with a condition attached,poc_placeholder - Wallester to confirm,true
+required_document_outstanding,request_more_information,A required document is still outstanding and the customer is asked for it by name,poc_placeholder - Wallester to confirm,true
+document_unreadable,request_more_information,A document could not be read and a clear copy is needed,poc_placeholder - Wallester to confirm,true
+document_expired,request_more_information,A document has expired and a valid one is needed,poc_placeholder - Wallester to confirm,true
+ubo_declaration_missing,request_more_information,The declaration of beneficial owners is missing,poc_placeholder - Wallester to confirm,true
+registered_address_mismatch,request_more_information,The address on the register does not match the documents supplied,poc_placeholder - Wallester to confirm,true
+director_identity_missing,request_more_information,An identity document for a director is missing,poc_placeholder - Wallester to confirm,true
+source_of_funds_clarification,request_more_information,The source of funds needs explaining before the case can move,poc_placeholder - Wallester to confirm,true
+ownership_structure_unclear,request_more_information,The ownership chain is not corroborated or not fully explained,poc_placeholder - Wallester to confirm,true
+proof_of_address_too_old,request_more_information,The proof of address is older than the rules allow and a recent one is needed,poc_placeholder - Wallester to confirm,true
+pep_exposure,enhanced_due_diligence,A politically exposed person or close associate needs enhanced due diligence,poc_placeholder - Wallester to confirm,true
+adverse_media_moderate,enhanced_due_diligence,Moderate adverse media needs a deeper review,poc_placeholder - Wallester to confirm,true
+complex_ownership,enhanced_due_diligence,A complex or layered ownership structure needs a deeper review,poc_placeholder - Wallester to confirm,true
+high_risk_jurisdiction,enhanced_due_diligence,A high-risk jurisdiction is involved,poc_placeholder - Wallester to confirm,true
+high_risk_activity,enhanced_due_diligence,The business activity is high-risk,poc_placeholder - Wallester to confirm,true
+possible_sanctions_match,escalate,A possible sanctions match needs a senior decision,poc_placeholder - Wallester to confirm,true
+confirmed_sanctions_match,escalate,A confirmed sanctions match needs a senior decision,poc_placeholder - Wallester to confirm,true
+serious_adverse_media,escalate,Serious adverse media needs a senior decision,poc_placeholder - Wallester to confirm,true
+critical_risk_band,escalate,The case scored in the critical risk band,poc_placeholder - Wallester to confirm,true
+entity_not_active_on_register,reject,The company is dissolved struck off or otherwise not active on the register,poc_placeholder - Wallester to confirm,true
+identity_not_verifiable,reject,The identity of a required person cannot be verified,poc_placeholder - Wallester to confirm,true
+ownership_not_established,reject,The ultimate beneficial ownership cannot be established,poc_placeholder - Wallester to confirm,true
+outside_risk_appetite,reject,The applicant is outside the risk appetite,poc_placeholder - Wallester to confirm,true
+applicant_withdrew,withdrawn,The applicant asked to withdraw the application,poc_placeholder - Wallester to confirm,true
+no_response_from_applicant,withdrawn,The applicant never completed the required items,poc_placeholder - Wallester to confirm,true
+identity_verification_failed,insufficient_evidence,An identity check failed or could not be completed,poc_placeholder - Wallester to confirm,true
+provider_unavailable_no_result,insufficient_evidence,A provider returned no result after a retry and nothing can be concluded,poc_placeholder - Wallester to confirm,true
+conflicting_evidence_unresolved,insufficient_evidence,The evidence conflicts and the conflict cannot be resolved,poc_placeholder - Wallester to confirm,true
+ownership_structure_unclear,enhanced_due_diligence,Dataset only (case 4): the ownership chain is not corroborated or not fully explained,dataset only - not offered in the form,false
+pep_match_edd_required,enhanced_due_diligence,Dataset only (case 5): a PEP match that requires enhanced due diligence,dataset only - not offered in the form,false
+confirmed_sanctions_match_on_ubo,escalate,Dataset only (case 12): a confirmed sanctions match on a beneficial owner,dataset only - not offered in the form,false
+identity_failure_and_provider_non_answer,insufficient_evidence,Dataset only (case 13): an identity failure alongside a provider that returned no result,dataset only - not offered in the form,false

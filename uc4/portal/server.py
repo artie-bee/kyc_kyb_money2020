@@ -336,13 +336,6 @@ class Handler(BaseHTTPRequestHandler):
             return self._page(render.page("Apply", render_form.application_form(
                 n, answers, errors, notice), demo=demo))
 
-        if form.get("nav") == "lookup":
-            # Fills two fields; they stay editable, and nothing is checked here.
-            found = data.lookup_company(answers.get("registration_number", ""))
-            if found:
-                answers["legal_name"] = found["legal_name"]
-                answers["registered_address"] = found["registered_address"]
-            return show(apply.BUSINESS, notice=render_form.lookup_note(found))
         if form.get("nav") == "back":
             return show(apply.previous_step(step, answers))
         errors = apply.validate(step, answers)

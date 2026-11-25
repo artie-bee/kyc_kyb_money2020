@@ -44,6 +44,11 @@ REMINDER = "reminder"
 OUTCOME_SITUATIONS = ("case_closed", "final_outcome_approved", "final_outcome_declined")
 # The optional early nudge on an unviewed request (kb/communication_schedule.csv).
 NUDGE = "unviewed_nudge"
+# Templates whose approved wording asks for one document by name. Sending one
+# by hand puts that document on the checklist when the customer does not owe it
+# already (app/data.send_message), so the portal has somewhere to upload it; its
+# {{item_list}} is everything else owed, so the document is not asked for twice.
+DOCUMENT_NAMED_BY_TEMPLATE = {"TPL-0003": "ownership_chart"}
 # What a send is, as far as the POC can say: written to the outbox table. There
 # is no mail gateway to report delivery, so nothing is ever called "delivered".
 DELIVERY_LABEL = "Simulated - sent to demo outbox"
@@ -251,8 +256,14 @@ def _choose(conn, case_id: str, situation: str, kb: KnowledgeBase, chooser: Temp
                 f"{chooser.mode} chooser returned {choice.template_id}, which is not allowed "
                 f"for '{situation}'; allowed: {[a['template_id'] for a in allowed]}")
     rule = next(a for a in allowed if a["template_id"] == choice.template_id)
+    placeholders = dict(choice.placeholders)
+    named = DOCUMENT_NAMED_BY_TEMPLATE.get(choice.template_id)
+    if named and "item_list" in placeholders:
+        others = list(dict.fromkeys(item_label(i) for i in owed_items(conn, case_id)
+                                    if i["document_type"] != named))
+        placeholders["item_list"] = ", ".join(others) or "the outstanding documents"
     return rule, choice.template_id, render(kb.message_templates[choice.template_id],
-                                            choice.placeholders)
+                                            placeholders)
 
 
 def preview_message(conn, case_id: str, situation: str, kb: KnowledgeBase,
@@ -618,6 +629,14 @@ def _first_views(conn, case_id: str) -> dict:
         for comm_id in _COMM_ID.findall(r["payload_summary"]):
             out.setdefault(comm_id, r["timestamp"])
     return out
+
+
+def requested_item_ids(conn, case_id: str) -> set:
+    """Every checklist item a request that was actually sent has named."""
+    sent = {r[0] for r in conn.execute("SELECT communication_id FROM communication WHERE"
+                                       " case_id = ? AND sent_status = 'sent'", (case_id,))}
+    return {i for comm, ids in _items_requested(conn, case_id).items() if comm in sent
+            for i in ids}
 
 
 def _items_requested(conn, case_id: str) -> dict:

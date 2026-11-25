@@ -216,12 +216,110 @@ def dashboard(conn) -> list[dict]:
             # None unless the customer owes an item on an open case
             "waiting": communication.waiting_timing(conn, case["case_id"], kb()),
             # when the current alert came in: the most recent open hold's placing
-            "alert_at": conn.execute(
-                "SELECT MAX(placed_at) FROM case_hold WHERE case_id = ?"
-                " AND released_at IS NULL", (case["case_id"],)).fetchone()[0] or "",
+            "alert_at": _alert_at(conn, case),
+            # who acknowledged the current alert, and where the customer
+            # follow-up stands: request, reminder, and whether each was seen
+            "acknowledged": _acknowledged(conn, case["case_id"]),
+            "follow": _follow_summary(conn, case["case_id"]),
+            # on a decided case: the decision that settled it, so the row
+            # still tells the story once no alert is open
+            "decided": _decided(conn, case),
+            # the latest alert, open or closed: when it came in, and when and
+            # how it closed (None while it is still open)
+            **_last_alert(conn, case),
             **_attention(case, open_now, risk),
         })
     return out
+
+
+def _decided(conn, case) -> dict | None:
+    """{decision, reviewer, at} for the decision that closed the case, or None
+    while it is open."""
+    if case["status"] not in CLOSED_STATUSES:
+        return None
+    row = conn.execute("SELECT decision, reviewer, timestamp FROM human_decision"
+                       " WHERE case_id = ? ORDER BY rowid DESC LIMIT 1",
+                       (case["case_id"],)).fetchone()
+    if row is None:        # closed by the schedule (no reply), not by a person
+        at = conn.execute("SELECT MAX(timestamp) FROM audit_event WHERE case_id = ?"
+                          " AND action = 'case_closed_no_response'",
+                          (case["case_id"],)).fetchone()[0]
+        return {"decision": "closed, no reply", "reviewer": None, "at": at} if at else None
+    return {"decision": row["decision"], "reviewer": row["reviewer"], "at": row["timestamp"]}
+
+
+def _last_alert(conn, case) -> dict:
+    """{alert_in, alert_closed, closed_how} for the case's latest alert. Open: a
+    hold still stands, or the case is Ready for decision. Closed: the decision
+    that settled the case, or the release of the last hold."""
+    open_at = _alert_at(conn, case)
+    if open_at:
+        return {"alert_in": open_at, "alert_closed": None, "closed_how": None}
+    last_hold = conn.execute("SELECT placed_at, released_at FROM case_hold WHERE case_id = ?"
+                             " ORDER BY placed_at DESC, hold_id DESC LIMIT 1",
+                             (case["case_id"],)).fetchone()
+    decided = _decided(conn, case)
+    if decided:
+        ready = conn.execute("SELECT MAX(timestamp) FROM audit_event WHERE case_id = ?"
+                             " AND action = 'evidence_pack_generated'",
+                             (case["case_id"],)).fetchone()[0]
+        came = max(t for t in (ready, last_hold["placed_at"] if last_hold else None, "")
+                   if t is not None)
+        return {"alert_in": came, "alert_closed": decided["at"],
+                "closed_how": decided["decision"].replace("_", " ")}
+    if last_hold:
+        return {"alert_in": last_hold["placed_at"], "alert_closed": last_hold["released_at"],
+                "closed_how": "released"}
+    return {"alert_in": "", "alert_closed": None, "closed_how": None}
+
+
+def _alert_at(conn, case) -> str:
+    """When the current alert came in: the most recent open hold's placing. A
+    case Ready for decision has no hold but is waiting on a person all the
+    same - the moment it became ready (its latest evidence pack) is its alert."""
+    placed = conn.execute("SELECT MAX(placed_at) FROM case_hold WHERE case_id = ?"
+                          " AND released_at IS NULL", (case["case_id"],)).fetchone()[0]
+    if placed or case["status"] != "ready_for_decision":
+        return placed or ""
+    return conn.execute("SELECT MAX(timestamp) FROM audit_event WHERE case_id = ?"
+                        " AND action = 'evidence_pack_generated'",
+                        (case["case_id"],)).fetchone()[0] or ""
+
+
+def _acknowledged(conn, case_id: str) -> dict | None:
+    """The current staff alert (the latest open hold an analyst or compliance
+    owns) and who opened it: {hold_id, who, role, at, minutes} - who is None
+    while nobody has. None when no staff alert is open: a hold waiting on the
+    customer is nobody's to acknowledge, and the follow-up says where it
+    stands. Read from the "alert_opened" audit row."""
+    hold = conn.execute("SELECT hold_id FROM case_hold WHERE case_id = ? AND released_at IS NULL"
+                        " AND owner != 'customer' ORDER BY placed_at DESC, hold_id DESC LIMIT 1",
+                        (case_id,)).fetchone()
+    if hold is None:
+        return None
+    for payload, stamp in conn.execute(
+            "SELECT payload_summary, timestamp FROM audit_event WHERE case_id = ?"
+            " AND action = 'alert_opened' ORDER BY rowid", (case_id,)):
+        m = _OPENED.match(payload or "")
+        if m and m.group(1) == hold["hold_id"]:
+            return {"hold_id": hold["hold_id"], "who": m.group(2), "role": m.group(3),
+                    "at": stamp, "minutes": int(m.group(4))}
+    return {"hold_id": hold["hold_id"], "who": None, "role": None, "at": None, "minutes": None}
+
+
+def _follow_summary(conn, case_id: str) -> dict | None:
+    """The latest request to the customer, from the Customer follow-up record:
+    {status, request_at, request_seen, reminder_at, reminder_seen, reminder_due}.
+    None when nothing was ever asked of the customer."""
+    requests = communication.follow_up(conn, case_id, kb())["requests"]
+    if not requests:
+        return None
+    r = requests[-1]
+    last = r["reminders"][-1] if r["reminders"] else None
+    return {"status": r["status"], "request_at": r["sent_at"], "request_seen": r["viewed_at"],
+            "reminder_at": last["sent_at"] if last else None,
+            "reminder_seen": last["viewed_at"] if last else None,
+            "reminder_due": r["next_reminder_due"]}
 
 
 # The groups an open case falls into on the dashboard - exactly one each, so
@@ -264,14 +362,13 @@ _CLOCK_TOTAL = re.compile(r"total \+(\d+) day")
 
 def demo_clock_days(conn) -> int:
     """How many days the demo clock stands ahead of the clock in force, read
-    from the audit trail: the highest total any advance recorded. A rebuilt
-    database (Reset demo) has none, so the clock is back at the start."""
-    best = 0
-    for (payload,) in conn.execute("SELECT payload_summary FROM audit_event"
-                                   " WHERE action = 'demo_clock_advanced'"):
-        m = _CLOCK_TOTAL.search(payload)
-        best = max(best, int(m.group(1))) if m else best
-    return best
+    from the audit trail: the total the latest advance or step back recorded.
+    A rebuilt database (Reset demo) has none, so the clock is back at the start."""
+    row = conn.execute("SELECT payload_summary FROM audit_event WHERE action IN"
+                       " ('demo_clock_advanced', 'demo_clock_rewound')"
+                       " ORDER BY rowid DESC LIMIT 1").fetchone()
+    m = _CLOCK_TOTAL.search(row[0]) if row else None
+    return int(m.group(1)) if m else 0
 
 
 def demo_clock_enabled() -> bool:
@@ -302,6 +399,10 @@ def advance_demo_clock(conn, days: int, actor: str) -> dict:
     if not (actor or "").strip():
         raise ValueError("an advance needs a named person")
     base, start = clock.current(), demo_clock_days(conn)
+    # A console request already runs on the demo clock; count from the clock
+    # under it, or every click adds the days so far a second time.
+    if isinstance(base, clock.OffsetClock):
+        base = base.base
     cases = [r[0] for r in conn.execute("SELECT case_id FROM onboarding_case ORDER BY case_id")]
     with clock.use(clock.OffsetClock(base, start)):
         target = clock.OffsetClock(base, start + days).today().isoformat()
@@ -318,6 +419,32 @@ def advance_demo_clock(conn, days: int, actor: str) -> dict:
                     sent.append((case_id, result.communication_id))
     conn.commit()
     return {"days": days, "total": start + days, "date": target, "sent": sent}
+
+
+def rewind_demo_clock(conn, actor: str) -> dict:
+    """Move the demo clock back one day, never before the start. Only the date
+    moves: what already happened stays - a reminder sent stays sent, and the
+    schedule does not run again. Audited on every case, like an advance."""
+    if not settings.DEMO_BUILD:
+        raise PermissionError("the demo clock exists only in a demo build")
+    if not (actor or "").strip():
+        raise ValueError("a step back needs a named person")
+    start = demo_clock_days(conn)
+    if start == 0:
+        raise ValueError("the demo clock is already at the start")
+    base = clock.current()
+    if isinstance(base, clock.OffsetClock):
+        base = base.base
+    cases = [r[0] for r in conn.execute("SELECT case_id FROM onboarding_case ORDER BY case_id")]
+    with clock.use(clock.OffsetClock(base, start - 1)):
+        target = clock.current().today().isoformat()
+        for case_id in cases:
+            db.audit(conn, case_id, "analyst", actor, "demo_clock_rewound",
+                     f"{DEMO_CLOCK_LABEL}: moved back 1 day by {actor}, to {target}; "
+                     f"total +{start - 1} day(s). Messages already sent stay sent. "
+                     "Demo build only", kb().version)
+    conn.commit()
+    return {"days": -1, "total": start - 1, "date": target, "sent": []}
 
 
 # ---------------------------------------------------------------------------
@@ -744,6 +871,48 @@ def decision_message_previews(conn, case_id: str, options) -> dict:
     return {o: decision.preview_customer_message(conn, case_id, o, kb()) for o in options}
 
 
+def decision_reason_previews(conn, case_id: str, options) -> list[dict]:
+    """The customer message for each decision and reason code the form offers,
+    one entry per distinct message: {decision, reasons, preview}. The reason
+    can change the message (asking for what is still owed sends the request
+    that names it), so the preview follows the pair, as record_decision does."""
+    k, case_row = kb(), case(conn, case_id)["case"]
+    out = []
+    for o in options:
+        groups = {}
+        for r in k.reason_codes_for(o, offered_only=True):
+            key = (decision.message_plan(k, o, case_row, r["code"]),
+                   decision.reason_problem(conn, case_id, o, r["code"]))
+            groups.setdefault(key, []).append(r["code"])
+        for plan, codes in groups.items():
+            out.append({"decision": o, "reasons": codes,
+                        "preview": decision.preview_customer_message(conn, case_id, o, k,
+                                                                     codes[0])})
+    return out
+
+
+def recommended_action(conn, case_id: str) -> str:
+    """What the system recommends for this case (decision.recommended_action)."""
+    return decision.recommended_action(conn, case_id)
+
+
+def default_decision(conn, case_id: str, options) -> tuple[str | None, str | None]:
+    """(decision, reason code) the form opens on. A case waiting only on
+    documents the customer owes: ask for them. Otherwise the recommendation,
+    with no reason pre-chosen."""
+    if (decision.REQUIRED_OUTSTANDING in [r["code"] for r in
+                                          kb().reason_codes_for("request_more_information")]
+            and "request_more_information" in options
+            and communication.owed_items(conn, case_id)
+            and not conn.execute("SELECT 1 FROM risk_assessment WHERE case_id = ?",
+                                 (case_id,)).fetchone()):
+        return "request_more_information", decision.REQUIRED_OUTSTANDING
+    a = conn.execute("SELECT recommended_action FROM risk_assessment WHERE case_id = ?",
+                     (case_id,)).fetchone()
+    rec = a[0] if a else None
+    return (rec if rec in options else None), None
+
+
 def messages_after_decision(conn, case_id: str) -> dict | None:
     """The latest decision, and what the customer was sent after it: every
     applicant message drafted after that decision's audit row (so a message
@@ -853,8 +1022,13 @@ def carry_on(conn, case_id: str) -> dict:
     document that was released or re-run the checks that were waiting. This asks
     the orchestrator to carry the case on from wherever it now stands, which is
     what happens in the pipeline and so must happen here too.
+
+    On a case already assessed, open holds do not stop it: resume() only reads
+    what has arrived since (a document asked for after review) and stops at
+    verification by itself, so a late file is read even while another hold -
+    a register mismatch, say - waits for an analyst.
     """
-    if open_holds(conn, case_id):
+    if open_holds(conn, case_id) and document_quality.document_stage_open(conn, case_id):
         return {"stopped_at": "holds", "reason": "holds are still open"}
     trace = resume(conn, case_id, _application(case_id, conn), kb())
     conn.commit()
@@ -989,6 +1163,19 @@ def suggested_message(conn, case_id: str) -> dict:
     if owed and "reminder" in offered:
         return {"situation": "reminder",
                 "why": f"The customer was asked and still owes {len(owed)} document(s)."}
+    # What was asked for after review has arrived: tell the customer it is in,
+    # once. Not on a restricted case, which keeps the generic holding message.
+    evidence = new_evidence(conn, case_id)
+    if (evidence and evidence["documents"] and not owed and not row["restricted_finding"]
+            and "status_update" in offered and not conn.execute(
+                "SELECT 1 FROM communication WHERE case_id = ? AND sent_status = 'sent'"
+                " AND situation IN ('status_update', 'manual_review_underway')"
+                " AND created_at >= ?", (case_id, evidence["placed_at"])).fetchone()):
+        got = ", ".join(f"{d['label'].lower()} ({d['document_id']})"
+                        for d in evidence["documents"])
+        return {"situation": "status_update",
+                "why": f"The customer sent what was asked for: {got}, and owes nothing "
+                       "else. This confirms it arrived and the application is with the team."}
     if row["restricted_finding"] or row["status"] in ("analyst_review_required",
                                                       "enhanced_due_diligence"):
         return {"situation": "manual_review_underway",
@@ -1001,9 +1188,24 @@ def suggested_message(conn, case_id: str) -> dict:
 
 def manual_previews(conn, case_id: str, situations) -> dict:
     """{situation: what Send a message would send}, rendered as it would go -
-    by a person, so a confirmed-match case previews what compliance approves."""
-    return {s: communication.preview_message(conn, case_id, s, kb(), approved_by_person=True)
-            for s in situations}
+    by a person, so a confirmed-match case previews what compliance approves.
+    "adds" is the document sending it puts on the checklist, if any."""
+    out = {}
+    for s in situations:
+        pv = communication.preview_message(conn, case_id, s, kb(), approved_by_person=True)
+        out[s] = dict(pv, adds=_document_to_add(conn, case_id, pv.get("template_id")))
+    return out
+
+
+def _document_to_add(conn, case_id, template_id) -> str | None:
+    """The document a template asks for by name, when the customer does not
+    owe it yet - so the message never asks for something the portal gives no
+    place to upload."""
+    named = communication.DOCUMENT_NAMED_BY_TEMPLATE.get(template_id or "")
+    if named and not any(i["document_type"] == named
+                         for i in communication.owed_items(conn, case_id)):
+        return named
+    return None
 
 
 def send_message(conn, case_id, situation, approver):
@@ -1032,8 +1234,17 @@ def send_message(conn, case_id, situation, approver):
         raise ValueError("Nothing is outstanding from this customer, so there is nothing to "
                          "remind them about. Ask for a document first (Request another "
                          "document on the Checklist tab), then send the reminder.")
+    template_id = communication.preview_message(
+        conn, case_id, situation, kb(), approved_by_person=True).get("template_id")
+    named = _document_to_add(conn, case_id, template_id)
+    if named:
+        # Added before the draft, so the request records it among the items it
+        # asked for and the follow-up reminder covers it.
+        requirement_pack.add_item(conn, case_id, named, approver,
+                                  f"asked for by name in {template_id} ({situation})", kb=kb())
+        document_quality.route_case(conn, case_id, kb())
     result = communication.send_required_message(conn, case_id, situation, kb(),
-                                                 approver=approver)
+                                                 approver=approver, template_id=template_id)
     conn.commit()
     return result
 
@@ -1264,6 +1475,82 @@ def reassessment_hold(conn, case_id: str):
     return reassessment.open_hold(conn, case_id)
 
 
+def new_evidence(conn, case_id: str) -> dict | None:
+    """What arrived after the assessment and is waiting on the analyst, with
+    what was read from it and a suggested next step:
+    {hold_id, documents: [{document_id, document_type, label, fields, read}],
+     suggest: {choice: "keep" | "rerun" | None, reason}} - or None.
+
+    A suggestion only, for the analyst to accept or change: it compares what
+    was read with what the application said, and decides nothing itself."""
+    from app.customer_view import DOCUMENT_LABELS
+    hold = reassessment_hold(conn, case_id)
+    if hold is None:
+        return None
+    placed_at = conn.execute("SELECT placed_at FROM case_hold WHERE hold_id = ?",
+                             (hold.hold_id,)).fetchone()[0]
+    ids = list(dict.fromkeys(
+        m.group(0) for (p,) in conn.execute(
+            "SELECT payload_summary FROM audit_event WHERE case_id = ? AND action ="
+            " 'new_evidence_after_assessment' AND timestamp >= ? ORDER BY rowid",
+            (case_id, placed_at)) for m in [re.match(r"DOC-\d+", p or "")] if m))
+    documents = []
+    for doc_id in ids:
+        doc = conn.execute("SELECT * FROM document WHERE document_id = ?", (doc_id,)).fetchone()
+        if doc is None or doc["quality_status"] == "superseded":
+            continue
+        rows = conn.execute("SELECT name, value, entry_method FROM extracted_field"
+                            " WHERE document_id = ? ORDER BY field_id", (doc_id,)).fetchall()
+        documents.append({
+            "document_id": doc_id, "document_type": doc["document_type"],
+            "label": DOCUMENT_LABELS.get(doc["document_type"],
+                                         doc["document_type"].replace("_", " ")),
+            "fields": [(r["name"], r["value"]) for r in rows if r["value"]],
+            "read": bool(rows) and all(r["entry_method"] != "awaiting_analyst_entry"
+                                       for r in rows)})
+    return {"hold_id": hold.hold_id, "placed_at": placed_at, "documents": documents,
+            "suggest": _suggest_reassessment(case_id, documents)}
+
+
+def _suggest_reassessment(case_id: str, documents: list[dict]) -> dict:
+    if not documents:
+        return {"choice": None, "reason": ""}
+    unread = [d for d in documents if not d["read"]]
+    if unread:
+        return {"choice": None,
+                "reason": "Read " + ", ".join(d["document_id"] for d in unread)
+                          + " first (Documents tab); the suggestion follows from what it says."}
+    ownership = _application(case_id).get("ownership", {})
+    corporate = bool(ownership.get("has_corporate_shareholder")) or (
+        ownership.get("ownership_layers") or 1) > 1
+    changes = []
+    for d in documents:
+        if d["document_type"] != "ownership_chart":
+            changes.append(f"{d['label']} {d['document_id']} arrived after the assessment")
+            continue
+        fields = dict(d["fields"])
+        middle = (fields.get("intermediate_entity") or "").strip()
+        if middle and not middle.lower().startswith("none"):
+            changes.append(f"ownership chart {d['document_id']} names an intermediate entity "
+                           f"({middle})")
+        elif corporate:
+            changes.append(f"ownership chart {d['document_id']} shows no intermediate company, "
+                           "but the application declared one")
+    if changes:
+        said = "; ".join(changes)
+        return {"choice": "rerun",
+                "reason": said[:1].upper() + said[1:]
+                          + ". Re-run verification so the registry, identity and risk "
+                            "results reflect it."}
+    summaries = [dict(d["fields"]).get("chart_summary") for d in documents]
+    return {"choice": "keep",
+            "reason": "Ownership chart " + ", ".join(d["document_id"] for d in documents)
+                      + " received and read: " + ("; ".join(s for s in summaries if s)
+                                                  or "no intermediate company")
+                      + ". No intermediate company, trust or nominee, as the application "
+                        "and the beneficial owner declaration said; the assessment stands."}
+
+
 def rerun_verification(conn, case_id, analyst_id, reason):
     from orchestrator.orchestrator import rerun_verification as rerun
     return rerun(conn, case_id, _application(case_id, conn), kb(), analyst_id, reason)
@@ -1460,12 +1747,6 @@ def next_in_queue(conn, role: str, after: str | None = None) -> str | None:
         rest = ids[ids.index(after) + 1:]
         return rest[0] if rest else ids[0] if ids[0] != after else None
     return ids[0]
-
-
-def lookup_company(registration_number: str) -> dict | None:
-    """The simulated registry lookup behind "Look up my company"."""
-    from orchestrator.providers import lookup_register
-    return lookup_register(registration_number)
 
 
 def replaced_by(conn, case_id: str) -> dict:

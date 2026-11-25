@@ -163,3 +163,62 @@ def test_the_panel_timeline_and_dashboard_show_the_business_day_date(env):
     panel = render.case_detail(conn, READY, tab=render.MESSAGES_TAB)
     assert "2026-10-01 UTC" in panel, "next reminder due on the follow-up panel"
     assert "Reminder due 2026-10-01" in render.case_detail(conn, READY, tab="Timeline")
+
+
+def test_a_message_naming_a_document_puts_it_on_the_checklist(env):
+    """TPL-0003 asks for an ownership chart by name. Sent on a case that owes
+    nothing, it adds the chart to the checklist first, so the customer has
+    somewhere to upload it and the follow-up reminder covers it."""
+    conn = env["conn"]
+    assert not C.owed_items(conn, READY)
+    preview = data.manual_previews(conn, READY, ["missing_items"])["missing_items"]
+    assert preview["template_id"] == "TPL-0003" and preview["adds"] == "ownership_chart"
+    # The chart is named once, in the template's own words.
+    assert preview["text"].count("ownership chart") == 1
+    sent = data.send_message(conn, READY, "missing_items", "analyst.test")
+    owed = C.owed_items(conn, READY)
+    assert [i["document_type"] for i in owed] == ["ownership_chart"]
+    assert owed[0]["item_id"] in C._items_requested(conn, READY)[sent.communication_id]
+    assert C.follow_up_due(conn, READY, KB)[0] == sent.communication_id
+    from app.customer_view import customer_checklist
+    assert any(i["checklist_item_id"] == owed[0]["item_id"] and i["can_upload"]
+               for i in customer_checklist(conn, READY)["items"])
+    # Asked for and owed: sending it again adds nothing more.
+    assert data.manual_previews(conn, READY, ["missing_items"])["missing_items"]["adds"] is None
+    assert data.suggested_message(conn, READY)["situation"] == "reminder"
+
+
+def _ack_column(conn, case_id=READY):
+    import html as _html
+    import re as _re
+    page = render.dashboard(conn)
+    row = next(t for t in _re.findall(r'<tr class="rowlink".*?</tr>', page, _re.S)
+               if "/case/" + case_id + '"' in t)
+    cell = _re.search(r'<td class="cell-ack".*?</td>', row, _re.S).group(0)
+    return _re.sub(r"\s+", " ", _html.unescape(_re.sub(r"<[^>]+>", " ", cell))).strip()
+
+
+def test_the_dashboard_shows_acknowledgement_reminder_and_what_the_customer_saw(env):
+    conn = env["conn"]
+    ask_for_more(conn)
+    # Only the customer owes something: nobody's alert to acknowledge, but the
+    # request and its reminder date are there.
+    text = _ack_column(conn)
+    assert "acknowledged" not in text.lower()
+    assert "Request sent" in text and "not seen yet" in text and "Reminder due" in text
+    # A staff alert, then an analyst opening the case.
+    from orchestrator import holds as H
+    H.place(conn, READY, "step.verification", "eligibility", "eligibility: check it",
+            "analyst", KB)
+    conn.commit()
+    assert "Not acknowledged yet" in _ack_column(conn)
+    data.record_alert_opened(conn, READY, "analyst.test", "analyst")
+    assert "Acknowledged by analyst.test" in _ack_column(conn)
+    # The customer reads the request; the reminder goes and is read too.
+    sent = C.follow_up(conn, READY, KB)["requests"][-1]["communication_id"]
+    data.record_messages_viewed(conn, READY, [sent])
+    reminder = data.send_message(conn, READY, "reminder", "analyst.test")
+    text = _ack_column(conn)
+    assert "Reminder sent" in text and text.count("seen") >= 1 and "not seen yet" in text
+    data.record_messages_viewed(conn, READY, [reminder.communication_id])
+    assert "not seen yet" not in _ack_column(conn)

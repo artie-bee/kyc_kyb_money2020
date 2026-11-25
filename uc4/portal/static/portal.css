@@ -219,7 +219,6 @@ h2 { font-size:17px; font-weight:600; margin:28px 0 10px; }
 /* the bullet is drawn, not typed: no character a font could lack */
 .item__tip::before { content:""; position:absolute; left:3px; top:.62em; width:5px; height:5px;
                      border-radius:50%; background:var(--fg-faint); }
-.lookup { margin-top:6px; }
 
 /* ---------- 3. Messages -------------------------------------------------- */
 

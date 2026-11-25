@@ -202,7 +202,7 @@ def test_case_6_timeline(site):
     site["as"]("compliance", "compliance.one")
     site["go"]("/case/WAL-ONB-0006")
     decision.record_decision(conn, "WAL-ONB-0006", "compliance.one", "compliance", "escalate",
-                             "demo_decision", "possible match", [],
+                             "possible_sanctions_match", "possible match", [],
                              escalation_target="sanctions.desk", kb=KB)
     past = [t for t, future in titles(conn, "WAL-ONB-0006") if not future]
     assert in_order(past, ["Application received", "Alert", "Opened by compliance.one",
@@ -257,5 +257,5 @@ def test_alert_came_in_is_the_current_open_holds_placed_time(site):
         "%Y-%m-%dT%H:%M:%SZ"), "a new hold replaced the old one"
 
     decision.record_decision(conn, "WAL-ONB-0010", "analyst.one", "analyst", "approve",
-                             "demo_decision", "clean", [], kb=KB)
+                             "all_mandatory_checks_passed", "clean", [], kb=KB)
     assert alert_at("WAL-ONB-0010") == "", "no open alert, so blank"

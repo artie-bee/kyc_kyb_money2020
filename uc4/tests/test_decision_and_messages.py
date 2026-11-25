@@ -103,15 +103,14 @@ def test_the_merged_tab_holds_everything_both_tabs_had_in_order(fresh):
     assert "?tab=Decision\"" not in page and "?tab=Communications" not in page
     marks = ['id="follow-up"', "Customer follow-up", 'id="decision"', "<h2>Decision</h2>",
              "System recommends", "Allowed at band", "Not offered at band",
-             'class="actionbox"', '<span class="actionbox__n">1</span>Record a decision',
+             'class="actionbox"', "Record a decision</h3>",
              'action="/action/record-decision"', 'id="customer-message"',
-             'class="actionbox__or"', 'id="send"',
-             '<span class="actionbox__n">2</span>Send a message only',
-             'action="/action/send-message"',
              'id="messages"', "<h2>Message history</h2>", "Compliance task"]
     where = [page.find(m) for m in marks]
     assert -1 not in where, [m for m, w in zip(marks, where) if w == -1]
-    assert where == sorted(where),         "follow-up, then one action box (decide OR send a message only), then the history"
+    assert where == sorted(where), "follow-up, then the decision box, then the history"
+    # No message-only form here: requests and reminders are on the Checklist rows.
+    assert "Send a message only" not in page and 'id="send"' not in page
     # the preview sits beside the form, in the same two-column row
     row = page.split('<div class="grid2 decide">')[1]
     assert row.find("record-decision") < row.find('id="customer-message"')
@@ -156,7 +155,7 @@ def test_the_portal_never_shows_the_customer_card():
 def test_case_1_approval_appears_in_the_sidebar(fresh):
     conn = fresh("full")
     decision.record_decision(conn, "WAL-ONB-0001", "analyst.test", "analyst", "approve",
-                             "demo_decision", "clean freelancer", [], kb=KB)
+                             "all_mandatory_checks_passed", "clean freelancer", [], kb=KB)
     latest, state = summary(conn, "WAL-ONB-0001")
     assert (latest["status"], latest["template_id"]) == ("sent", "TPL-0007")
     assert latest["subject"] == "Approval notification"
@@ -188,7 +187,7 @@ def test_case_12_awaiting_compliance_approval_until_it_is_given(fresh):
     conn = fresh("reset")
     before = conn.execute("SELECT COUNT(*) FROM outbox").fetchone()[0]
     decision.record_decision(conn, "WAL-ONB-0012", "compliance.test", "compliance", "escalate",
-                             "demo_decision", "confirmed match", [],
+                             "confirmed_sanctions_match", "confirmed match", [],
                              escalation_target="mlro.queue", kb=KB)
     assert conn.execute("SELECT COUNT(*) FROM outbox").fetchone()[0] == before, \
         "the decision alone sends nothing"

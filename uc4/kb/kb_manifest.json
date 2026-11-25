@@ -1,5 +1,5 @@
 {
-  "kb_version": "kb-2026.09-poc-v16",
+  "kb_version": "kb-2026.09-poc-v17",
   "items": {
     "applicant_type_rules": {
       "file": "applicant_type_rules.csv",
@@ -83,7 +83,7 @@
     },
     "decision_reason_codes": {
       "file": "decision_reason_codes.csv",
-      "version": "1.0",
+      "version": "1.2",
       "brief_section": "5.10 - Analyst decision, reason vocabulary"
     },
     "resubmission_reason_text": {

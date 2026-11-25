@@ -66,7 +66,11 @@ def run(conn, case_id: str, application: dict, kb: KnowledgeBase) -> PackResult:
         # of the human-readable condition sentence. A condition that is answered
         # 'no' still produces a checklist item, marked waived, so the decision stays
         # on the record; an unanswered one is left for the analyst to confirm.
-        note, status = None, "pending"
+        # On a portal application (WAL-DEMO-), a condition answered 'yes' makes
+        # the item required for the case: listed, counted and waited for like any
+        # other required document. The scripted WAL-ONB- cases keep the level the
+        # dataset records, so they still match it.
+        note, status, level = None, "pending", rule["level"]
         if rule["level"] == "conditional":
             key = rule["condition_key"] or rule["condition"]
             if key not in flags:
@@ -75,6 +79,10 @@ def run(conn, case_id: str, application: dict, kb: KnowledgeBase) -> PackResult:
                 problems.append(note)
             elif not flags[key]:
                 status = "waived"
+            elif db.is_demo_case(case_id):
+                level, note = "required", f"Required because: {rule['condition']}"
+                if key not in SHOWN_FROM_THE_START:
+                    note += ". " + ON_REQUEST
 
         # Who does this rule apply to? The KB may list several roles separated
         # by "|" (e.g. "director|ubo|authorised_signatory"); the rule then applies
@@ -101,9 +109,9 @@ def run(conn, case_id: str, application: dict, kb: KnowledgeBase) -> PackResult:
                 "INSERT INTO checklist_item (item_id, pack_id, rule_id, subject_individual_id,"
                 " document_type, level, status, note) VALUES (?,?,?,?,?,?,?,?)",
                 (db.next_id(conn, "checklist_item"), pack_id, rule["rule_id"], subject,
-                 rule["document_type"], rule["level"], status, note),
+                 rule["document_type"], level, status, note),
             )
-            counts[rule["level"]] += 1
+            counts[level] += 1
 
     db.audit(conn, case_id, "system", ACTOR, "requirement_pack_generated",
              f"{pack_id}: {counts['required']} required, {counts['optional']} optional, "
@@ -129,6 +137,19 @@ AWAITING = "analyst to confirm"
 # rule_id on an item an analyst added after the pack was built, e.g. during
 # enhanced due diligence. It has no KB rule behind it; the note says who and why.
 ADDED_RULE_ID = "ADDED-BY-ANALYST"
+
+
+# On a portal case, a document required because a condition applies (a bank
+# statement for card spend above 50,000 EUR) is shown to the customer once an
+# analyst asks for it, not before. A condition every portal case meets is not a
+# trigger: those items show from the start.
+ON_REQUEST = "shown to the customer once an analyst asks for it"
+SHOWN_FROM_THE_START = ("remote_onboarding",)
+
+
+def on_request(item) -> bool:
+    """A condition-triggered item the customer is not shown until asked for."""
+    return ON_REQUEST in (item["note"] or "")
 
 
 def awaiting_confirmation(item) -> bool:

@@ -1,7 +1,9 @@
 """
-Send a message says, where it is used, that it has sent: a confirmation beside
-the button, the new message marked "Just sent", and every situation already
-sent to the customer named in the dropdown. Sending again is still allowed.
+Sending a message by hand - the Request / Send reminder button on a checklist
+row, the only place it is offered now that the Decision tab records decisions
+only. The server's rules still stand whatever is posted: outcome messages go
+with the decision, a reminder needs something owed, a decided case takes no
+further message. The result shows in the page banner and in Message history.
 
 Run: python -m pytest tests/test_send_message_feedback.py -q
 """
@@ -57,109 +59,55 @@ def site(tmp_path):
 
 
 def messages_section(page):
-    """The decision section (with its action box: decide, or send a message
-    only) and Message history below it."""
+    """The decision section and Message history below it."""
     return page.split('<section id="decision">')[1]
 
 
-def send(go, situation):
-    """Post the form as the page does: its back address is the send option."""
+def banner(page):
+    """The page-wide note a posted action leaves at the top of the main area."""
+    return page.split('<main class="main">')[1].split("<h2>")[0]
+
+
+def send(go, situation, case_id=CASE):
+    """Post as the checklist row does: back to the Checklist tab."""
     status, where, _ = go("/action/send-message", {
-        "case_id": CASE, "situation": situation,
-        "back": render.tab_href(CASE, render.MESSAGES_TAB, "send")})
-    assert status == 303 and where.endswith("#send"), where
-    return where, messages_section(go(where.split("#")[0])[2])
+        "case_id": case_id, "situation": situation,
+        "back": render.tab_href(case_id, "Checklist")})
+    assert status == 303, where
+    return where, go(where)[2]
 
 
-def test_before_anything_is_sent_nothing_says_already_sent(site):
+def test_the_decision_tab_no_longer_has_a_message_form(site):
     section = messages_section(site(render.tab_href(CASE, render.MESSAGES_TAB))[2])
-    assert "already sent" not in section and "Just sent" not in section
-    assert "<form" in section and "data-once" in section, "the button locks on click"
+    assert "Send a message only" not in section and 'id="send"' not in section
+    assert 'action="/action/send-message"' not in section
+    assert "use its row on the Checklist tab" in section
 
 
-def test_after_sending_the_confirmation_is_beside_the_button(site):
-    where, section = send(site, "resubmission")
+def test_a_request_from_the_checklist_is_sent_and_shown(site):
+    where, page = send(site, "resubmission")
     comm = re.search(r"Message%20(COM-\d+)", where).group(1)
-    form_at = section.index('id="send"')
-    history_at = section.index('<section id="messages">')
-    done = section[form_at:history_at]
-    assert "Send a message only" in done
-    assert "Sent" in done and comm in done and "TPL-0001" in done, \
-        "the confirmation sits in the send option of the action box, by the button"
-    assert "Simulated - sent to demo outbox" in done
-    assert section.count('<span class="justsent">') == 1 and comm in section[history_at:]
-    assert re.search(r'<details class="doc doc--fresh" open>', section), "opened and marked"
-
-
-def test_the_dropdown_and_list_say_which_situations_already_went(site):
-    send(site, "resubmission")
-    where, section = send(site, "status_update")
-    options = dict(re.findall(r'<option value="([a-z_]+)">([^<]+)</option>', section))
-    assert "already sent" in options["resubmission"]
-    assert "already sent" in options["status_update"]
-    assert "already sent" not in options["verification_delay"]
-    listed = re.search(r'<p class="sentlist">(.*?)</p>', section, re.S).group(1)
-    assert "resubmission" in listed and "status_update" in listed
-    # a reload without the outcome in the address keeps the list, drops "Just sent"
-    plain = messages_section(site(where.split("?")[0] + "?tab=" + render.MESSAGES_TAB)[2])
-    assert "Just sent" not in plain and "already sent" in plain
+    assert comm in banner(page) and "TPL-0001" in banner(page)
+    history = messages_section(site(render.tab_href(CASE, render.MESSAGES_TAB))[2])
+    assert comm in history
 
 
 def test_sending_the_same_situation_again_is_still_allowed(site):
     send(site, "status_update")
-    _, section = send(site, "status_update")
-    assert section.count('<span class="justsent">') == 1
-    assert len(re.findall(r"situation status_update", section)) == 2
+    send(site, "status_update")
+    conn = console_server._conn
+    assert conn.execute("SELECT COUNT(*) FROM communication WHERE case_id = ? AND"
+                        " situation = 'status_update'", (CASE,)).fetchone()[0] == 2
 
 
-# ---------------------------------------------------------------------------
-# Outcome messages are not sent by hand; a reminder needs something owed
-# ---------------------------------------------------------------------------
-
-def test_the_situation_is_filled_in_from_the_case_and_no_outcome_is_offered(site):
-    """Case 2 owes two documents and has not been asked: resubmission, with
-    the exact text shown before anything is sent."""
-    section = messages_section(site(render.tab_href(CASE, render.MESSAGES_TAB))[2])
-    select = re.search(r'<select name="situation" required data-send-previews>(.*?)</select>',
-                       section, re.S).group(1)
-    assert '<option value="resubmission" selected>resubmission (suggested)' in select
-    assert '<option value="" disabled>Choose a situation…</option>' in select
-    values = re.findall(r'<option value="([a-z_]+)"', select)
-    for outcome in ("case_closed", "final_outcome_approved", "final_outcome_declined"):
-        assert outcome not in values
-    assert {"resubmission", "reminder", "status_update"} <= set(values)
-    assert "Suggested:</strong> resubmission" in section
-    shown = re.search(r'<div class="preview" data-send-preview-for="resubmission">(.*?)</div></div>',
-                      section, re.S).group(1)
-    assert "ubo declaration" in shown and "id document for Denton Halliwell" in shown
-    others = re.findall(r'data-send-preview-for="([a-z_]+)" hidden', section)
-    assert "resubmission" not in others and "status_update" in others
-
-
-def test_the_suggestion_moves_on_as_the_case_does(site):
-    send(site, "resubmission")
-    section = messages_section(site(render.tab_href(CASE, render.MESSAGES_TAB))[2])
-    assert '<option value="reminder" selected>reminder (suggested)' in section
-    one = messages_section(site(render.tab_href("WAL-ONB-0001", render.MESSAGES_TAB))[2])
-    assert '<option value="status_update" selected>status_update (suggested)' in one
-    six = messages_section(site(render.tab_href("WAL-ONB-0006", render.MESSAGES_TAB))[2])
-    assert ('<option value="manual_review_underway" selected>manual_review_underway '
-            "(suggested)") in six, "restricted: the generic holding message"
-
-
-def test_a_decided_case_offers_no_form_and_refuses_a_message(site):
+def test_a_decided_case_refuses_a_message(site):
     conn = console_server._conn
     from orchestrator.kb import KnowledgeBase
     from orchestrator.steps import decision
     decision.record_decision(conn, "WAL-ONB-0010", "analyst.test", "analyst", "approve",
-                             "demo_decision", "clean", [], kb=KnowledgeBase())
+                             "all_mandatory_checks_passed", "clean", [], kb=KnowledgeBase())
     conn.commit()
-    section = messages_section(site(render.tab_href("WAL-ONB-0010", render.MESSAGES_TAB))[2])
-    assert 'action="/action/send-message"' not in section
-    assert "went out with the decision" in section
-    status, where, _ = site("/action/send-message", {
-        "case_id": "WAL-ONB-0010", "situation": "status_update",
-        "back": render.tab_href("WAL-ONB-0010", "Communications")})
+    where, _ = send(site, "status_update", "WAL-ONB-0010")
     assert "err=" in where and "decided" in where
     assert conn.execute("SELECT COUNT(*) FROM communication WHERE case_id = 'WAL-ONB-0010'"
                         " AND situation = 'status_update'").fetchone()[0] == 0
@@ -168,11 +116,8 @@ def test_a_decided_case_offers_no_form_and_refuses_a_message(site):
 @pytest.mark.parametrize("outcome", ["case_closed", "final_outcome_approved",
                                      "final_outcome_declined"])
 def test_an_outcome_message_is_refused_even_if_posted(site, outcome):
-    status, where, _ = site("/action/send-message", {
-        "case_id": CASE, "situation": outcome, "back": render.tab_href(CASE, "Communications")})
-    assert status == 303 and "err=" in where
-    section = messages_section(site(where.split("#")[0])[2])
-    assert "Not sent" in section and "not sent by hand" in section
+    where, page = send(site, outcome)
+    assert "err=" in where and "not sent by hand" in banner(page)
     conn = console_server._conn
     assert not conn.execute("SELECT 1 FROM communication WHERE case_id = ? AND situation = ?",
                             (CASE, outcome)).fetchone()
@@ -180,20 +125,74 @@ def test_an_outcome_message_is_refused_even_if_posted(site, outcome):
 
 def test_a_reminder_lists_what_is_owed_and_is_refused_when_nothing_is(site):
     # Case 2 owes two documents: the reminder names them
-    _, section = send(site, "reminder")
-    body = re.search(r'<details class="doc doc--fresh" open>.*?<p>(.*?)</p>', section,
-                     re.S).group(1)
+    send(site, "reminder")
+    body = console_server._conn.execute(
+        "SELECT rendered_text FROM communication WHERE case_id = ? AND situation = 'reminder'",
+        (CASE,)).fetchone()[0]
     assert "ubo declaration" in body and "id document for Denton Halliwell" in body
-    # Case 1 owes nothing: no reminder, and the reason is beside the button
-    status, where, _ = site("/action/send-message", {
-        "case_id": "WAL-ONB-0001", "situation": "reminder",
-        "back": render.tab_href("WAL-ONB-0001", "Communications")})
-    assert "err=" in where
-    section = messages_section(site(where.split("#")[0])[2])
-    assert "Nothing is outstanding from this customer" in section
+    # Case 1 owes nothing: no reminder, and the page says why
+    where, page = send(site, "reminder", "WAL-ONB-0001")
+    assert "err=" in where and "Nothing is outstanding from this customer" in banner(page)
 
 
 def test_no_choice_is_refused_not_sent(site):
     status, where, _ = site("/action/send-message", {
         "case_id": CASE, "back": render.tab_href(CASE, "Communications")})
     assert status == 303 and "err=" in where and "Choose%20a%20situation" in where
+
+
+# ---------------------------------------------------------------------------
+# The decision form's one optional Comments box
+# ---------------------------------------------------------------------------
+
+def decide(go, **fields):
+    fields = {"case_id": CASE, "rationale": "recorded by a test",
+              "back": render.tab_href(CASE, render.MESSAGES_TAB), **fields}
+    status, where, _ = go("/action/record-decision", fields)
+    assert status == 303, where
+    return where
+
+
+def test_the_form_has_one_optional_comments_box(site):
+    section = messages_section(site(render.tab_href(CASE, render.MESSAGES_TAB))[2])
+    assert 'name="comments"' in section and "Comments (optional)" in section
+    assert 'name="override_reason"' not in section and 'name="escalation_target"' not in section
+    assert "Only when they apply" not in section
+
+
+def test_an_override_takes_its_reason_from_comments(site):
+    # Case 2 owes documents, so the recommendation is request_more_information.
+    where = decide(site, choice="withdrawn", reason_code="applicant_withdrew")
+    assert "err=" in where and "Say%20why%20in%20Comments" in where
+    where = decide(site, choice="withdrawn", reason_code="applicant_withdrew",
+                   comments="The customer emailed to stop the application")
+    assert "err=" not in where, where
+    row = console_server._conn.execute(
+        "SELECT override_flag, override_reason FROM human_decision WHERE case_id = ?",
+        (CASE,)).fetchone()
+    assert row["override_flag"] == 1
+    assert row["override_reason"] == "The customer emailed to stop the application"
+
+
+def test_a_comment_on_the_recommended_decision_is_kept_with_the_rationale(site):
+    where = decide(site, choice="request_more_information",
+                   reason_code="required_document_outstanding", comments="Also asked by phone")
+    assert "err=" not in where, where
+    row = console_server._conn.execute(
+        "SELECT rationale, override_flag, override_reason FROM human_decision"
+        " WHERE case_id = ?", (CASE,)).fetchone()
+    assert row["rationale"].endswith("Comment: Also asked by phone")
+    assert row["override_flag"] == 0 and row["override_reason"] is None
+
+
+def test_a_refused_decision_is_said_beside_the_form(site):
+    section = messages_section(site(render.tab_href(CASE, render.MESSAGES_TAB))[2])
+    assert '<textarea name="rationale" required' in section, "the browser asks for it first"
+    where = decide(site, choice="request_more_information",
+                   reason_code="required_document_outstanding", rationale="")
+    assert "err=" in where and "rationale" in where
+    section = messages_section(site(where)[2])
+    decide_at = section.index('class="grid2 decide"')
+    assert "Not recorded" in section[:decide_at] and "needs a rationale" in section[:decide_at]
+    assert console_server._conn.execute(
+        "SELECT COUNT(*) FROM human_decision WHERE case_id = ?", (CASE,)).fetchone()[0] == 0

@@ -87,6 +87,24 @@ class QualityResult:
 PRE_CHECKER_CHECKS = {"unsupported_file_type", "missing_pages", "missing_pages_structural"}
 # Checks that need a date read off the page, so they run after the checker.
 DATE_CHECKS = {"expiry_date_passed", "max_age_exceeded"}
+# The extractor reads dates as printed (prompts/extraction_v1.txt); an ID card
+# printing 10.05.2027 must not stop the run.
+_DAY_FIRST = re.compile(r"(\d{1,2})[./-](\d{1,2})[./-](\d{4})")
+
+
+def parse_date(value) -> date | None:
+    """A date as ISO yyyy-mm-dd or day-first dd.mm.yyyy (also / or -), or None
+    when it cannot be read - which the date rules treat as not known."""
+    text = str(value or "").strip()
+    try:
+        return date.fromisoformat(text)
+    except ValueError:
+        pass
+    m = _DAY_FIRST.fullmatch(text)
+    try:
+        return date(int(m.group(3)), int(m.group(2)), int(m.group(1))) if m else None
+    except ValueError:
+        return None
 
 
 def _run_deterministic(rule: dict, doc: dict, dates: dict, max_age_days: str | None, today: date):
@@ -103,14 +121,14 @@ def _run_deterministic(rule: dict, doc: dict, dates: dict, max_age_days: str | N
         return rule["failure_flag"] if ext not in param.split(";") else None
 
     if check == "expiry_date_passed":
-        expiry = dates.get("expiry_date")
-        return rule["failure_flag"] if expiry and date.fromisoformat(expiry) < today else None
+        expiry = parse_date(dates.get("expiry_date"))
+        return rule["failure_flag"] if expiry and expiry < today else None
 
     if check == "max_age_exceeded":
-        issued, limit = dates.get("document_date"), max_age_days
+        issued, limit = parse_date(dates.get("document_date")), max_age_days
         if not issued or not limit:
             return None
-        return rule["failure_flag"] if (today - date.fromisoformat(issued)).days > int(limit) else None
+        return rule["failure_flag"] if (today - issued).days > int(limit) else None
 
     if check in ("missing_pages", "missing_pages_structural"):
         pages, expected = doc.get("page_count"), doc.get("expected_page_count")

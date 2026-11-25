@@ -26,6 +26,7 @@ sys.path.insert(0, str(UC4))
 
 from app import data                                                  # noqa: E402
 from app.customer_view import customer_view, leaks                    # noqa: E402
+from orchestrator.steps import communication, requirement_pack        # noqa: E402
 
 STATIC = Path(__file__).resolve().parent / "static"
 
@@ -234,15 +235,18 @@ def page(title, body, active, conn=None, case_id=None, role="analyst",
 
 
 def _demo_clock_control(conn, case_id, active) -> str:
-    """Demo builds only: move the demo clock on 1 or 7 days. The normal schedule
-    then runs - reminders, and case 14's closure on day 30. Every advance is
-    audited, and Reset demo puts the clock back to the start."""
+    """Demo builds only: move the demo clock on 1 or 7 days, or back 1. The
+    normal schedule runs on the way forward - reminders, and case 14's closure
+    on day 30; going back moves only the date. Every move is audited, and Reset
+    demo puts the clock back to the start."""
     if conn is None or not data.demo_clock_enabled():
         return ""
     days = data.demo_clock_days(conn)
     back = (dict(SCREENS).get(active, "/") + case_id) if case_id and active in CASE_SCREENS \
         else dict(SCREENS).get(active, "/")
-    buttons = "".join(
+    buttons = ('<button class="btn" type="submit" name="days" value="-1"'
+               ' title="Moves the date back only: messages already sent stay sent"'
+               + ("" if days else " disabled") + ">-1 day</button>") + "".join(
         '<button class="btn" type="submit" name="days" value="' + str(n) + '">+' + str(n)
         + (" day" if n == 1 else " days") + "</button>" for n in (1, 7))
     return ('    <form method="post" action="/action/demo-clock" class="democlock"'
@@ -288,15 +292,98 @@ def _customer_card(conn, case_id) -> str:
 NO_ALERT = "—"
 
 
-def _alert_cell(stamp) -> str:
-    """"2026-09-29 09:10 UTC · 25 min ago", or a dash when no alert is open. The
-    sort key is the stored time, so the column sorts oldest first, dashes last."""
+def _alert_cell(r) -> str:
+    """When the latest alert came in: "2026-09-29 09:10 UTC · 25 min ago" while
+    it is open, the time alone once it has closed, a dash if the case never had
+    one. The sort key is the stored time for open alerts, so the column sorts
+    oldest first; closed and no alert sort last."""
+    stamp, is_open = r.get("alert_in") or "", r.get("alert_closed") is None
     if not stamp:
         return ('<td class="cell-alert" data-key="~">'
-                '<span class="muted" title="no open alert">' + NO_ALERT + "</span></td>")
-    return ('<td class="cell-alert" data-key="' + e(stamp) + '">'
-            '<span class="nowrap">' + e(stamp[:16].replace("T", " ") + " UTC") + "</span>"
-            ' <span class="muted nowrap">&middot; ' + e(data.ago(stamp)) + "</span></td>")
+                '<span class="muted" title="no alert">' + NO_ALERT + "</span></td>")
+    when = '<span class="nowrap">' + e(stamp[:16].replace("T", " ") + " UTC") + "</span>"
+    if not is_open:
+        return '<td class="cell-alert" data-key="~' + e(stamp) + '">' + when + "</td>"
+    return ('<td class="cell-alert" data-key="' + e(stamp) + '">' + when
+            + ' <span class="muted nowrap">&middot; ' + e(data.ago(stamp)) + "</span></td>")
+
+
+def _closed_cell(r) -> str:
+    """When and how the latest alert closed: "30 Sep 06:16 · approve", or Still
+    open. Open alerts sort first."""
+    if not r.get("alert_in"):
+        return '<td class="cell-closed" data-key="2"><span class="muted">' + NO_ALERT + "</span></td>"
+    if r.get("alert_closed") is None:
+        return ('<td class="cell-closed" data-key="0">'
+                '<span class="ack ack--no">Still open</span></td>')
+    return ('<td class="cell-closed" data-key="1' + e(r["alert_closed"]) + '">'
+            '<span class="nowrap">' + e(_day(r["alert_closed"])) + "</span>"
+            ' <span class="muted">&middot; ' + e(r["closed_how"]) + "</span></td>")
+
+
+def _day(stamp) -> str:
+    """"29 Sep 10:25" from a stored stamp; "2 Oct" from a date."""
+    from datetime import datetime
+    if not stamp:
+        return ""
+    t = datetime.fromisoformat(stamp[:16] if len(stamp) > 10 else stamp)
+    return f"{t.day} {t:%b}" + (f" {t:%H:%M}" if len(stamp) > 10 else "")
+
+
+def _minutes(n: int) -> str:
+    if n < 60:
+        return f"{n} min"
+    if n < 1440:
+        return f"{n // 60} hr{'' if n // 60 == 1 else 's'}"
+    return f"{n // 1440} day{'' if n // 1440 == 1 else 's'}"
+
+
+def _ack_cell(r) -> str:
+    """Who acknowledged the current alert, then where the customer follow-up
+    stands: the request and the reminder, each with whether the customer saw it.
+    Sorted by acknowledgement: not acknowledged first."""
+    lines = []
+    ack, follow = r["acknowledged"], r["follow"]
+    if ack and ack["who"]:
+        lines.append('<span class="ack ack--ok">&#10003; Acknowledged by ' + e(ack["who"])
+                     + '</span><span class="muted"> &middot; ' + e(_day(ack["at"])) + ", "
+                     + e(_minutes(ack["minutes"])) + " after the alert</span>")
+    elif ack:
+        lines.append('<span class="ack ack--no">Not acknowledged yet</span>')
+    if follow and follow["status"] in ("Awaiting customer", "Reminder sent"):
+        seen = (lambda at: '<span class="muted"> &middot; seen ' + e(_day(at)) + "</span>"
+                if at else '<span class="muted"> &middot; not seen yet</span>')
+        lines.append("Request sent " + e(_day(follow["request_at"])) + seen(follow["request_seen"]))
+        if follow["reminder_at"]:
+            lines.append("Reminder sent " + e(_day(follow["reminder_at"]))
+                         + seen(follow["reminder_seen"]))
+        elif follow["reminder_due"]:
+            lines.append('Reminder due <span class="nowrap">' + e(_day(follow["reminder_due"]))
+                         + "</span>")
+    elif follow and follow["status"] == "Completed":
+        lines.append('<span class="muted">Customer sent what was asked</span>')
+    decided = r.get("decided")
+    if decided:
+        # A decided case keeps its story: who decided, and what was asked of
+        # the customer on the way (request, reminder, whether each was seen).
+        lines = []
+        if decided["reviewer"]:
+            lines.append('<span class="ack ack--ok">✓ Decided by ' + e(decided["reviewer"])
+                         + '</span><span class="muted"> &middot; ' + e(_day(decided["at"]))
+                         + "</span>")
+        if follow and follow["request_at"]:
+            seen = (lambda at: '<span class="muted"> &middot; seen ' + e(_day(at)) + "</span>"
+                    if at else '<span class="muted"> &middot; not seen</span>')
+            lines.append("Request sent " + e(_day(follow["request_at"]))
+                         + seen(follow["request_seen"]))
+            if follow["reminder_at"]:
+                lines.append("Reminder sent " + e(_day(follow["reminder_at"]))
+                             + seen(follow["reminder_seen"]))
+    key = "0" if ack and not ack["who"] else "1" if ack else "2"
+    if not lines:
+        return '<td class="cell-ack" data-key="3"><span class="muted">' + NO_ALERT + "</span></td>"
+    return ('<td class="cell-ack" data-key="' + key + '">'
+            + "".join('<span class="cell-ack__line">' + ln + "</span>" for ln in lines) + "</td>")
 
 
 def role_var(tone: str, part: str = "") -> str:
@@ -386,7 +473,7 @@ def _case_table(rows, all_rows) -> str:
             + '<td class="ta-r">' + cell(r["risk_score"], "not scored yet") + "</td>"
             + '<td class="ta-r">' + holds + "</td>"
             + '<td class="cell-detail">' + cell(r["hold_plain"]) + "</td>"
-            + _alert_cell(r["alert_at"]) + "</tr>")
+            + _alert_cell(r) + _closed_cell(r) + _ack_cell(r) + "</tr>")
 
     def boxes(name, values, words=None):
         return "".join(
@@ -404,9 +491,20 @@ def _case_table(rows, all_rows) -> str:
             + help_mark("Each open hold in plain words (kb/hold_reason_wording.csv), with who "
                         "it is for in brackets.") + "</th>"
             '<th scope="col" data-sort="text">Alert came in'
-            + help_mark("When the case's current alert - its most recent open hold - was "
-                        "placed, and how long ago on the demo clock. Oldest first.",
-                        edge=True) + "</th>")
+            + help_mark("When the case's latest alert came in - its most recent hold, or "
+                        "the moment it became ready for a decision - and, while it is "
+                        "open, how long ago on the demo clock. Open alerts oldest first.")
+            + "</th>"
+            '<th scope="col" data-sort="text">Alert closed'
+            + help_mark("When and how the latest alert closed: the decision that settled "
+                        "the case, or the release of its hold. Still open while someone "
+                        "has to act.") + "</th>"
+            '<th scope="col" data-sort="text">Acknowledged / follow-up'
+            + help_mark("Who opened the current alert and how long after it came in "
+                        "(recorded the first time someone who can act on it opens the "
+                        "case). Then the latest request to the customer and its reminder: "
+                        "when each was sent, or when the reminder is due, and whether the "
+                        "customer has seen it on their Messages page.", edge=True) + "</th>")
     waiting = sum(1 for r in all_rows if r["waiting"])
     n = len(rows)
     return (
@@ -703,23 +801,40 @@ def queue_page(conn, role="analyst", **kw) -> str:
 def _reassessment_panel(conn, case_id) -> str:
     """New evidence arrived after the assessment: the analyst decides whether it
     changes anything. The paid checks run again only from here."""
-    hold = data.reassessment_hold(conn, case_id)
-    if hold is None:
+    evidence = data.new_evidence(conn, case_id)
+    if evidence is None:
         return ""
     back = "/case/" + e(case_id)
+    suggest = evidence["suggest"]
+    label = {"keep": "Keep the assessment", "rerun": "Re-run verification"}
+    read = "".join(
+        "<li><strong>" + e(d["label"]) + "</strong> " + idtag(d["document_id"])
+        + (": " + "; ".join(e(n.replace("_", " ")) + " <em>" + e(v) + "</em>"
+                            for n, v in d["fields"]) if d["fields"] else " (not read yet)")
+        + "</li>" for d in evidence["documents"])
+    advice = ""
+    if suggest["choice"]:
+        advice = ('<p class="suggest"><strong>Suggested:</strong> ' + e(label[suggest["choice"]])
+                  + ". The reason below is filled in from what was read; change either if "
+                  "you see it differently.</p>")
+    elif suggest["reason"]:
+        advice = '<p class="suggest">' + e(suggest["reason"]) + "</p>"
+
+    def button(choice):
+        tone = "btn btn--primary" if choice == (suggest["choice"] or "rerun") else "btn"
+        return ('<button class="' + tone + '" name="choice" value="' + choice + '">'
+                + label[choice] + ("" if choice != suggest["choice"] else " (suggested)")
+                + "</button>")
     return '<div id="reassess"></div>' + note(
-        "<p>A document arrived after the paid checks answered. It has been screened; "
-        "once it has been read (Documents tab), choose one. The risk band stays as it "
-        "is until you do.</p>"
+        "<p>A document arrived after the paid checks answered. It has been screened and "
+        "read; choose one. The risk band stays as it is until you do.</p>"
+        + ("<ul>" + read + "</ul>" if read else "") + advice +
         '<form method="post" action="/action/reassess">'
         '<input type="hidden" name="case_id" value="' + e(case_id) + '">'
         '<input type="hidden" name="back" value="' + back + '">'
-        '<div class="field"><label>Reason</label><input type="text" name="reason" required>'
-        "</div>"
-        '<div class="btn-row">'
-        '<button class="btn btn--primary" name="choice" value="rerun">Re-run verification'
-        "</button>"
-        '<button class="btn" name="choice" value="keep">Keep the assessment</button></div>'
+        '<div class="field"><label>Reason</label><input type="text" name="reason" required'
+        ' value="' + e(suggest["reason"] if suggest["choice"] else "") + '"></div>'
+        '<div class="btn-row">' + button("rerun") + button("keep") + "</div>"
         '<p class="foot">Re-running replaces the registry, identity and risk results; the '
         "previous ones are archived in the audit trail. Screening results are kept as they "
         "are.</p></form>", "warn", "New evidence after assessment")
@@ -821,7 +936,11 @@ def _tab_checklist(conn, case_id, **kw):
     if not items:
         return "<h2>Requirement checklist</h2><p class=\"empty\">No checklist.</p>"
 
-    required = [i for i in items if i["level"] == "required"]
+    # Everything the case must supply, counted as the portal counts it: the
+    # required items and the conditional ones that apply (a spend-triggered bank
+    # statement, a selfie). Not optional, waived or still-unconfirmed items.
+    required = [i for i in items if i["level"] in ("required", "conditional")
+                and requirement_pack.shown_to_customer(i)]
     accepted = [i for i in required if i["status"] == "accepted"]
     outstanding = [i for i in required if i["status"] != "accepted"]
 
@@ -845,10 +964,15 @@ def _tab_checklist(conn, case_id, **kw):
            '<span class="progress__note">' + e(note_text) + "</span></div>"
            '<div class="progress__bar"><div class="' + fill_class
            + '" style="width:' + str(pct) + '%"></div></div></div>']
+    # On each outstanding row: ask the customer for it (one message lists them all).
+    ask = _request_from_customer(conn, case_id) if outstanding else ""
+    owed = {id(i) for i in outstanding}
 
     seen = set()
     for level, heading in LEVEL_ORDER:
-        group = [i for i in items if i["level"] == level]
+        # What is still missing comes first, so it is the first thing seen.
+        group = sorted((i for i in items if i["level"] == level),
+                       key=lambda i: id(i) not in owed)
         seen.update(id(i) for i in group)
         if not group:
             continue
@@ -859,7 +983,7 @@ def _tab_checklist(conn, case_id, **kw):
                    + '</span><span class="group__tally">' + str(in_hand) + " of "
                    + str(len(group)) + " accepted</span></div>")
         for i in group:
-            out.append(_check_row(i, case_id))
+            out.append(_check_row(i, case_id, ask if id(i) in owed else ""))
         out.append("</section>")
 
     # Anything with a level the KB has added since this list was written still
@@ -869,39 +993,33 @@ def _tab_checklist(conn, case_id, **kw):
     if rest:
         out.append('<section class="group"><div class="group__head">'
                    '<span class="group__name">Other</span></div>')
-        out.extend(_check_row(i, case_id) for i in rest)
+        out.extend(_check_row(i, case_id, ask if id(i) in owed else "") for i in rest)
         out.append("</section>")
-    out.append(_add_item_form(conn, case_id))
     return "".join(out)
 
 
-def _add_item_form(conn, case_id) -> str:
-    """Ask the customer for one more document after the pack was built. It
-    appears on their checklist at once, by a generic name on a restricted case."""
-    types = "".join('<option value="' + e(t) + '">' + e(t.replace("_", " ")) + "</option>"
-                    for t in data.addable_document_types())
-    people = '<option value="">The business, not a person</option>' + "".join(
-        '<option value="' + e(p["individual_id"]) + '">' + e(p["full_name"]) + "</option>"
-        for p in data.people(conn, case_id))
-    return ('<form method="post" action="/action/add-item" class="panel">'
+def _request_from_customer(conn, case_id) -> str:
+    """Ask the customer for what is outstanding, from the checklist itself: the
+    written request the first time, the reminder once they have been asked.
+    data.send_message(), with the situation data.suggested_message() gives,
+    so the wording and approval rules are unchanged."""
+    suggested = data.suggested_message(conn, case_id)
+    situation = suggested["situation"]
+    if situation not in communication.REQUEST_SITUATIONS + (communication.REMINDER,):
+        return ""
+    label = "Send reminder" if situation == communication.REMINDER else "Request"
+    why = suggested["why"] + " The message appears in the customer portal."
+    return ('<form method="post" action="/action/send-message" class="check__ask" data-once>'
             '<input type="hidden" name="case_id" value="' + e(case_id) + '">'
-            '<input type="hidden" name="back" value="/case/' + e(case_id) + '?tab=Checklist">'
-            '<h3>Request another document</h3>'
-            '<div class="formgrid">'
-            '<div class="field"><label>Document</label><select name="document_type">'
-            + types + "</select></div>"
-            '<div class="field"><label>For</label><select name="subject">' + people
-            + "</select></div>"
-            '<div class="field"><label>Reason (internal)</label>'
-            '<input type="text" name="reason" required></div></div>'
-            '<button class="btn btn--primary" type="submit">Add to the checklist</button>'
-            '<p class="foot">Added as required. The customer sees it on their checklist at '
-            "once; send the matching approved message from Message history on the "
-            "Decision &amp; messages tab.</p>"
-            "</form>")
+            '<input type="hidden" name="situation" value="' + e(situation) + '">'
+            '<input type="hidden" name="back" value="' + e(tab_href(case_id, "Checklist")) + '">'
+            '<button class="btn btn--primary" type="submit" title="' + e(why) + '">'
+            + label + "</button></form>")
 
 
-def _check_row(item, case_id="") -> str:
+def _check_row(item, case_id="", ask="") -> str:
+    """One checklist line. `ask` is the button that asks the customer for an
+    outstanding item, shown beside its status."""
     tone, mark, plain = CHECK_STATUS.get(item["status"], ("none", "?", item["status"]))
     confirm = ""
     if item.get("awaiting_confirmation"):
@@ -932,7 +1050,7 @@ def _check_row(item, case_id="") -> str:
             '<span class="check__side">' + attempts
             + chip(plain, tone=("neutral" if tone == "none" else tone))
             + '<span class="check__ids">' + e(item["rule_id"]) + " &middot; "
-            + e(item["item_id"]) + "</span></span>" + confirm + "</div>")
+            + e(item["item_id"]) + "</span>" + ask + "</span>" + confirm + "</div>")
 
 
 def _tab_documents(conn, case_id, role="analyst", reviewer="analyst.demo", **kw):
@@ -1341,8 +1459,7 @@ def _tab_decision(conn, case_id, role="analyst", reviewer="analyst.demo", flash=
     band = data.band_for_decisions(conn, case_id)
     options = data.available_decisions(conn, case_id)
     if not options:
-        out.append(_action_box('<p class="empty">No decision is available at this band.</p>',
-                               _send_part(conn, case_id, flash)))
+        out.append(_action_box('<p class="empty">No decision is available at this band.</p>'))
         return "".join(out)
 
     # What the system concluded. Without this the analyst has to leave the tab
@@ -1387,14 +1504,31 @@ def _tab_decision(conn, case_id, role="analyst", reviewer="analyst.demo", flash=
     out.append(offered)
 
     out.append(_ai_preparation(conn, case_id, role))
+    evidence = data.new_evidence(conn, case_id)
+    if evidence and evidence["documents"]:
+        pick = evidence["suggest"]["choice"]
+        out.append(note(
+            "Arrived after the assessment: " + ", ".join(
+                e(d["label"]) + " " + idtag(d["document_id"]) for d in evidence["documents"])
+            + ". The band and recommendation below are from before it. Deal with it first in "
+            '<a href="/case/' + e(case_id) + '#reassess">New evidence after assessment</a>'
+            + (" (suggested: <strong>" + ("keep the assessment" if pick == "keep"
+                                           else "re-run verification") + "</strong>)"
+               if pick else "") + ", then record the decision.", "warn", "New evidence"))
 
+    pick, pick_reason = data.default_decision(conn, case_id, options)
     opts = []
     for o in options:
         same = " (matches the recommendation)" if o == recommended else ""
-        opts.append('<option value="' + e(o) + '">' + e(o) + e(same) + "</option>")
+        opts.append('<option value="' + e(o) + '"' + (" selected" if o == pick else "") + ">"
+                    + e(o) + e(same) + "</option>")
 
+    # A refused decision is said here, beside the form, not only at the top.
+    refused = (note(e(flash[1].split(": ", 1)[-1]), "bad", "Not recorded")
+               if flash and flash[0] == "err" and flash[1].startswith("DecisionRefused")
+               else "")
     decide = (
-        '<div class="grid2 decide">'
+        refused + '<div class="grid2 decide">'
         '<form method="post" action="/action/record-decision" class="panel">'
         '<input type="hidden" name="case_id" value="' + e(case_id) + '">'
         '<input type="hidden" name="back" value="' + e(tab_href(case_id, "Decision")) + '">'
@@ -1409,7 +1543,7 @@ def _tab_decision(conn, case_id, role="analyst", reviewer="analyst.demo", flash=
         + help_mark("Why you decided this, in plain words. Required for every "
                     "decision. This is what a reviewer reads months later, so "
                     "write it for them rather than for yourself today.")
-        + '</label><textarea name="rationale" '
+        + '</label><textarea name="rationale" required '
           'placeholder="What you concluded, and what you based it on."></textarea></div>'
         '<div class="field"><label>Reason code'
         + help_mark("The category behind the decision, from "
@@ -1418,28 +1552,15 @@ def _tab_decision(conn, case_id, role="analyst", reviewer="analyst.demo", flash=
                     "many rejections last quarter were entity_not_active_on_register. "
                     "Free text cannot answer that, because two analysts will word "
                     "the same thing differently.")
-        + "</label>" + _reason_code_select(conn, case_id, options) + "</div>"
+        + "</label>" + _reason_code_select(conn, case_id, options, pick_reason) + "</div>"
         "</div>"
 
-        '<div class="formsection"><div class="formsection__head">Only when they apply'
-        + help_mark("Both of these are usually left empty. Fill one only in the "
-                    "case described beside it.", edge=True)
-        + "</div>"
-        '<div class="formgrid">'
-        '<div class="field"><label>Override reason'
-        + help_mark("Fill this only if your decision differs from what the system "
-                    "recommended. You do not declare an override - the backend "
-                    "compares the two and refuses without a reason if they differ.")
-        + '</label><input type="text" name="override_reason" '
-          'placeholder="Only if you disagree with the recommendation">'
-        '<span class="help">Recommended here: <strong>'
-        + (e(recommended) if recommended else "none") + "</strong></span></div>"
-        '<div class="field"><label>Escalation target'
-        + help_mark("Who the case goes to. Required for 'escalate' and ignored "
-                    "otherwise, for example sanctions.desk.")
-        + '</label><input type="text" name="escalation_target" '
-          'placeholder="Only for escalate"></div>'
-        "</div></div>"
+        '<div class="formsection"><div class="field"><label>Comments (optional)'
+        + help_mark("Anything else worth recording. If your decision differs from "
+                    "the recommendation, say why here - it is recorded as the "
+                    "override reason, and the backend asks for one if it is empty.")
+        + '</label><textarea name="comments" rows="2" class="comments" '
+          'placeholder="Optional"></textarea></div></div>'
 
         '<div class="formsection"><div class="formsection__head">Acting as'
         + help_mark("Who is recording this. The role is checked by the backend "
@@ -1458,25 +1579,20 @@ def _tab_decision(conn, case_id, role="analyst", reviewer="analyst.demo", flash=
         "</div></div>"
         '<button class="btn btn--primary" type="submit">Record this decision</button>'
         "</form>" + _message_previews(conn, case_id, options) + "</div>")
-    out.append(_action_box(decide, _send_part(conn, case_id, flash)))
+    out.append(_action_box(decide))
     return "".join(out)
 
 
-def _action_box(decide, send) -> str:
-    """The two things this tab lets you do, in one box and plainly apart: record
-    a decision (its message goes with it), OR send a message on its own."""
+def _action_box(decide) -> str:
+    """Record a decision; its customer message goes with it. Requests and
+    reminders are sent from the outstanding rows on the Checklist tab."""
     return ('<section class="actionbox" id="act">'
             '<div class="actionbox__opt">'
-            '<h3 class="actionbox__h"><span class="actionbox__n">1</span>Record a decision</h3>'
+            '<h3 class="actionbox__h">Record a decision</h3>'
             '<p class="actionbox__sub">The customer message shown beside the form is sent '
-            "with the decision. You do not send it separately.</p>" + decide + "</div>"
-            '<div class="actionbox__or" role="separator"><span>or</span></div>'
-            '<div class="actionbox__opt" id="send">'
-            '<h3 class="actionbox__h"><span class="actionbox__n">2</span>Send a message only'
-            "</h3>"
-            '<p class="actionbox__sub">No decision is recorded and the case stays where it is. '
-            "Use this to ask for documents, remind, or give an update.</p>" + send + "</div>"
-            "</section>")
+            "with the decision. You do not send it separately. To ask for a missing "
+            "document or send a reminder, use its row on the Checklist tab.</p>"
+            + decide + "</div></section>")
 
 
 GENERIC_NOTE = "Generic wording is used because this case has an internal finding."
@@ -1489,8 +1605,15 @@ def _message_previews(conn, case_id, options) -> str:
     recorded. One block per decision the form offers; the script shows the one
     selected (with scripts off, every block is shown under its decision)."""
     blocks = []
-    for choice, p in data.decision_message_previews(conn, case_id, options).items():
-        head = ('<p class="muted">If you record <strong>' + e(choice) + "</strong>:</p>")
+    entries = data.decision_reason_previews(conn, case_id, options)
+    split = {x["decision"] for x in entries
+             if sum(1 for y in entries if y["decision"] == x["decision"]) > 1}
+    for x in entries:
+        choice, p = x["decision"], x["preview"]
+        head = ('<p class="muted">If you record <strong>' + e(choice) + "</strong>"
+                + (" with reason " + ", ".join("<strong>" + e(c) + "</strong>"
+                                                for c in x["reasons"])
+                   if choice in split else "") + ":</p>")
         if p["kind"] == "withheld":
             body = note(e(WITHHELD_TEXT) + " After the decision, compliance approves the "
                         "message as its own action, here or under Message history.",
@@ -1500,12 +1623,16 @@ def _message_previews(conn, case_id, options) -> str:
                     + '<div class="msg"><span class="msg__when">' + idtag(p["template_id"])
                     + " approved template &middot; situation " + e(p["situation"])
                     + "</span>" + e(p["text"]) + "</div>")
+        elif p["kind"] == "refused":
+            body = note(e(p["text"]) + ". Recording it with this reason is refused.", "bad",
+                        "Not allowed on this case")
         elif p["kind"] == "blocked":
             body = note("This message would be blocked by the restricted-wording check and "
                         "not sent.", "bad")
         else:
             body = '<p class="empty">No customer message follows this decision.</p>'
-        blocks.append('<div class="preview" data-preview-for="' + e(choice) + '">' + head
+        blocks.append('<div class="preview" data-preview-for="' + e(choice)
+                      + '" data-preview-reasons="' + e(" ".join(x["reasons"])) + '">' + head
                       + body + "</div>")
     return ('<section class="panel" id="customer-message"><h3>Customer message'
             + help_mark("A preview of what the customer would be sent, rendered from the "
@@ -1546,7 +1673,7 @@ def _message_sent(conn, case_id, role) -> str:
     return '<section class="panel">' + "".join(parts) + "</section>"
 
 
-def _reason_code_select(conn, case_id, options) -> str:
+def _reason_code_select(conn, case_id, options, selected=None) -> str:
     """The reason codes the KB allows, grouped by the decision each one suits.
 
     Grouped rather than flat because the list is long and most of it is
@@ -1557,18 +1684,21 @@ def _reason_code_select(conn, case_id, options) -> str:
     kb = data.kb()
     groups, seen = [], set()
     for decision in options:
-        rows = [r for r in kb.reason_codes_for(decision) if r["applies_to"] != "*"]
+        rows = [r for r in kb.reason_codes_for(decision, offered_only=True)
+                if r["applies_to"] != "*"]
         if not rows:
             continue
         items = []
         for r in rows:
             items.append('<option value="' + e(r["code"]) + '" title="'
-                         + e(r["description"]) + '">' + e(r["code"]) + "</option>")
+                         + e(r["description"]) + '"'
+                         + (" selected" if r["code"] == selected else "") + ">"
+                         + e(r["code"]) + "</option>")
             seen.add(r["code"])
         groups.append('<optgroup label="' + e(decision) + '">'
                       + "".join(items) + "</optgroup>")
 
-    anywhere = [r for r in kb.decision_reason_codes if r["applies_to"] == "*"]
+    anywhere = [r for r in kb.reason_codes_for(offered_only=True) if r["applies_to"] == "*"]
     if anywhere:
         groups.append('<optgroup label="any decision">'
                       + "".join('<option value="' + e(r["code"]) + '" title="'
@@ -1576,8 +1706,8 @@ def _reason_code_select(conn, case_id, options) -> str:
                                 for r in anywhere) + "</optgroup>")
 
     if not groups:                       # a KB with no codes is still usable
-        return '<input type="text" name="reason_code" value="demo_decision">'
-    return '<select name="reason_code">' + "".join(groups) + "</select>"
+        return '<input type="text" name="reason_code" required>'
+    return '<select name="reason_code" data-reasons>' + "".join(groups) + "</select>"
 
 
 def _next_steps(conn, case_id, role) -> str:
@@ -1602,7 +1732,8 @@ def _next_steps(conn, case_id, role) -> str:
         if hold.owner == "customer":
             steps.append('<span class="nextsteps__blocked">Waiting on the applicant'
                          "</span>: " + e(what) + ". Nothing for you to clear - send "
-                         "the reminder from Message history below if it is overdue.")
+                         "the reminder from the item's row on the Checklist tab if it "
+                         "is overdue.")
         elif hold.owner != role:
             steps.append('<span class="nextsteps__blocked">Only ' + e(hold.owner)
                          + " can release " + idtag(hold.hold_id) + "</span>: "
@@ -1770,7 +1901,7 @@ def _follow_up_panel(conn, case_id) -> str:
 def _tab_decision_messages(conn, case_id, role="analyst", reviewer="analyst.demo",
                            flash=None, **kw):
     """The Decision and Communications tabs as one, in the order a person works:
-    what the customer owes, the decision, then every message and Send a message.
+    what the customer owes, the decision, then every message sent.
     Each section keeps an id, so the old tab links land on it."""
     return ('<section id="follow-up">' + _follow_up_panel(conn, case_id) + "</section>"
             '<section id="decision">' + _tab_decision(conn, case_id, role=role,
@@ -1822,90 +1953,6 @@ def _just_sent(flash):
         return m.groups() if m else None
     return None
 
-
-def _send_part(conn, case_id, flash=None) -> str:
-    """Option 2 of the action box: send a message without recording a decision.
-    The situation is filled in from the case; the text is previewed; what has
-    already been sent is listed; the outcome of the last send is shown here."""
-    just = _just_sent(flash)
-    messages = data.communications(conn, case_id)
-    # Which situations have already gone to the customer, and when (the latest).
-    sent = {}
-    for m in messages:
-        if m["audience"] == "applicant" and m["sent_status"] == "sent" and m["situation"]:
-            sent[m["situation"]] = m
-    # The list offers what the rules allow here, without the outcome messages
-    # (they go with the decision), and opens on the message the case calls for
-    # now - so the situation is filled in from the case, not left to chance.
-    situations = data.manual_situations(conn, case_id)
-    suggested = data.suggested_message(conn, case_id)
-    pick = suggested["situation"]
-    opts = ('<option value=""' + ("" if pick else " selected") + ' disabled>'
-            "Choose a situation…</option>" + "".join(
-                '<option value="' + e(s) + '"' + (" selected" if s == pick else "") + ">" + e(s)
-                + (" (suggested)" if s == pick else "")
-                + (" — already sent " + e(_when_short(sent[s]["created_at"])) if s in sent else "")
-                + "</option>" for s in situations))
-    previews = []
-    for s, pv in data.manual_previews(conn, case_id, situations).items():
-        if pv["kind"] == "message":
-            body = ('<div class="msg"><span class="msg__when">' + idtag(pv["template_id"])
-                    + " approved template</span>" + e(pv["text"]) + "</div>")
-        elif pv["kind"] == "blocked":
-            body = note("This message would be blocked by the restricted-wording check.", "bad")
-        else:
-            body = '<p class="empty">No approved template is allowed for this here.</p>'
-        previews.append('<div class="preview" data-send-preview-for="' + e(s) + '"'
-                        + ("" if s == pick else " hidden") + ">" + body + "</div>")
-    done = ""
-    if just:
-        done = note("Message " + idtag(just[0]) + " sent to the customer under "
-                    + idtag(just[1]) + ". It is marked <strong>Just sent</strong> in Message history below, and "
-                    "the customer sees it on their Messages page. Delivery: "
-                    + e(data.DELIVERY_LABEL) + ".", "ok", "Sent")
-    elif flash and flash[0] == "err" and any(
-            k in flash[1] for k in ("not sent by hand", "remind", "Choose a situation")):
-        done = note(e(flash[1].split(": ", 1)[-1]), "bad", "Not sent")
-    already = ""
-    if sent:
-        already = ('<p class="sentlist"><strong>Already sent to this customer:</strong> '
-                   + ", ".join(e(s) + ' <span class="muted">(' + e(sent[s]["communication_id"])
-                               + ", " + e(_when_short(sent[s]["created_at"])) + ")</span>"
-                               for s in sorted(sent)) + "</p>")
-    return done + _send_form(case_id, suggested, opts, previews, already)
-
-
-
-
-def _send_form(case_id, suggested, opts, previews, already) -> str:
-    """The Send a message form - or, on a decided case, a note saying the
-    customer's message went with the decision (no form: nothing contradicts it)."""
-    if suggested["situation"] is None and "decided" in suggested["why"]:
-        return (note(e(suggested["why"]) + " Nothing further is sent from here, so no message "
-                     "can contradict the decision.", "info", "Decided")
-                + already)
-    why = ('<p class="suggest"><strong>Suggested:</strong> ' + e(suggested["situation"] or "none")
-           + " &middot; " + e(suggested["why"]) + "</p>")
-    return (
-        '<form method="post" action="/action/send-message" class="panel" data-once>'
-        '<input type="hidden" name="case_id" value="' + e(case_id) + '">'
-        '<input type="hidden" name="back" value="'
-        + e(tab_href(case_id, MESSAGES_TAB, "send")) + '">' + already + why
-        + '<div class="field"><label>Situation</label>'
-        '<select name="situation" required data-send-previews>' + opts + "</select>"
-        '<span class="help">Filled in from where the case stands; change it if you need '
-        "another. Approval, decline and closure messages are not in this list: they go out "
-        "with the decision you record above, or with the automatic closure after 30 days "
-        "without a reply.</span></div>"
-        '<div class="sendpreview"><span class="sendpreview__k">The customer will read</span>'
-        + "".join(previews) + "</div>"
-        '<button class="btn btn--primary" type="submit">Draft and approve as me</button>'
-        "</form>")
-
-
-# ---------------------------------------------------------------------------
-# The customer view, and the two reference screens
-# ---------------------------------------------------------------------------
 
 def customer(conn, case_id, **kw) -> str:
     view = customer_view(conn, case_id)

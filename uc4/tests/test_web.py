@@ -224,7 +224,7 @@ def test_the_backends_refusal_reaches_the_screen_in_its_own_words(site):
     post(site, "/action/settings", role="analyst", reviewer="analyst.demo", back="/")
     status, location = post(site, "/action/record-decision",
                             case_id="WAL-ONB-0006", choice="escalate",
-                            reason_code="demo", rationale="trying it",
+                            reason_code="possible_sanctions_match", rationale="trying it",
                             escalation_target="sanctions.desk",
                             back="/case/WAL-ONB-0006?tab=Decision")
     assert status == 303
@@ -239,7 +239,7 @@ def test_a_role_the_taxonomy_allows_is_accepted(site):
          reviewer="compliance.demo", back="/")
     status, location = post(site, "/action/record-decision",
                             case_id="WAL-ONB-0006", choice="escalate",
-                            reason_code="demo", rationale="to the sanctions desk",
+                            reason_code="possible_sanctions_match", rationale="to the sanctions desk",
                             escalation_target="sanctions.desk",
                             back="/case/WAL-ONB-0006?tab=Decision")
     kind, text = flash(location)
@@ -308,14 +308,14 @@ def test_the_role_chosen_on_the_form_is_the_one_enforced(site):
     back = "/case/WAL-ONB-0006?tab=Decision"
 
     _, location = post(site, "/action/record-decision", case_id="WAL-ONB-0006",
-                       choice="escalate", reason_code="demo", rationale="trying it",
+                       choice="escalate", reason_code="possible_sanctions_match", rationale="trying it",
                        escalation_target="sanctions.desk",
                        role="analyst", reviewer="a.analyst", back=back)
     kind, text = flash(location)
     assert kind == "err" and "compliance" in text
 
     _, location = post(site, "/action/record-decision", case_id="WAL-ONB-0006",
-                       choice="escalate", reason_code="demo",
+                       choice="escalate", reason_code="possible_sanctions_match",
                        rationale="to the sanctions desk",
                        escalation_target="sanctions.desk",
                        role="compliance", reviewer="k.ohtla", back=back)

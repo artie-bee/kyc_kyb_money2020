@@ -71,7 +71,7 @@ Be precise here. This POC is a standalone build that *represents* the reuse spli
 2. **Documents tab:** open the director ID preview. The audience can see it's genuinely unreadable. The verdict shows the flag *blurred / unreadable*.
 3. **Checklist:** the UBO declaration item is still *pending*.
 4. **Checks tab:** it's **empty**. Pause here; this is the key moment.
-5. **Decision & messages tab:** in the action box, under option **2 Send a message only** — nothing has been sent yet, and the sidebar's **Customer** card says *No messages yet*. The situation is already filled in — `resubmission (suggested)`, because the customer owes two documents and has not been asked — and the text the customer will read is shown beneath it. Click **Draft and approve as me**. The request appears and names exactly what's missing, in plain language: *ubo declaration, id document for Denton Halliwell*.
+5. **Checklist tab:** the two missing documents are the first rows, each with a **Request** button — nothing has been sent yet, and the sidebar's **Customer** card says *No messages yet*. Hover the button: the customer owes two documents and has not been asked. Click **Request** on either row. One request goes out and names exactly what's missing, in plain language: *ubo declaration, id document for Denton Halliwell* (see it under **Decision & messages → Message history**).
 6. **Customer view:** the applicant sees a clear status and knows exactly what to do next.
 7. **Portal** (optional, http://127.0.0.1:8701/demo): **Open as this customer** next to *Northbridge Craft Supplies Ltd*. The **Next step** card at the top reads *"Upload a clearer copy: Identity document (passport or ID card) - Denton Halliwell"*, with the upload control right there. On **Documents needed**, point at the three tips under the ID row before anything is uploaded: *not expired*, *flat in good light with every corner visible*, *no glare*.
 
@@ -225,7 +225,7 @@ Both are synthetic specimens. Never upload a real document.
    - *A few facts:* No · No · No · Yes · No;
    - tick *Every detail here is made up for the demo*.
 
-   On *Your business*, type the registration number **EE-16550321** first and click **Look up my company**. The business name and registered address fill in, under a note headed **Simulated registry lookup**; both fields stay editable. Point out the label: this is a demo lookup, and it only fills the form. The checks later compare the register with what the *documents* say.
+   On *Your business*, the customer types every value, including the business name and registered address. The checks later compare the register with what the *documents* say.
 
    Point out that nothing on the form asks what *kind* of applicant this is. The system decides that from the facts (here, *SME company*).
 2. **Portal:** the customer lands on *My application*, signed in to the new case (reference **WAL-DEMO-** plus the next number: references are never reused, so it continues from the last one issued, even after Reset demo). Click **Documents needed**: **0 accepted · 0 under review · 11 still needed**, one row per document, each with its own upload area.
@@ -248,19 +248,19 @@ Both are synthetic specimens. Never upload a real document.
 
 ---
 
-## Scenario 9 — Documents in, but one more is needed · Case WAL-ONB-0001 · about 4 min
+## Scenario 9 — One document still to come · Nordvalo Logistics OÜ · about 4 min
 
-**Story:** the customer sent everything, but on review the analyst wants one more document. They ask; the customer does not answer; the system reminds them after 3 business days.
+**Story:** a new customer sends everything except one document their own facts require. The analyst asks for it from the checklist; the customer does not answer; the system reminds them.
 
-1. Open **Case 1** (Kaari Mets), or any case that is *Ready for decision* and not yet decided (cases 9 and 10 also work). Every document is accepted.
-2. **Checklist tab:** under **Request another document**, add **Business bank statement** with a reason, e.g. *"Three months of statements to confirm expected card spend."* The case now owes a document again.
-3. **Decision & messages tab → ② Send a message only:** the situation is already filled in — `resubmission (suggested)` — with the reason *"Not asked for in writing yet: bank statement… A reminder follows after 3 business days…"*, and the text the customer will read names the bank statement. Click **Draft and approve as me**.
-4. **Portal** (Kaari Mets): within about 15 seconds the **New message** card pops up and **Messages** shows **1**; **Documents needed** lists the bank statement.
-5. **Timeline tab:** a dashed *Reminder due …* three business days after the request (weekends skipped — a Tuesday request is due on Friday).
-6. The customer does not answer. Click **Demo clock +1 day** until the demo date reaches that due date (three clicks on a weekday; more if a weekend falls in between): the reminder goes out on its own, listing the bank statement, and pops up in the portal. The Customer follow-up panel shows *Reminder sent*.
-7. Optional: upload a PDF against the bank statement in the portal — the item goes under review and no further reminder is sent.
+1. **Portal → Start a new demo application** with the values in `demo_packs/nordvalo_logistics/CASE_DETAILS.md` (two directors, card spend 65,000 EUR). Because the spend is above 50,000 EUR, the checklist asks for a **business bank statement**, as required.
+2. Upload files 01–14 from `demo_packs/nordvalo_logistics/`. They are a recognised pack: each is accepted and its fields filled in at once. Keep `upload_during_demo/15_business_bank_statement.pdf` back.
+3. **Console → the case → Checklist tab:** *14 of 15 required items accepted — outstanding: bank statement*, and the bank statement is the first row. The case waits on the customer; it is not Ready for decision.
+4. Click **Request** on the bank statement's row. The written request goes out under the approved template.
+5. **Portal** (Nordvalo): within about 15 seconds the **New message** card pops up; **Documents needed** lists the bank statement.
+6. The customer does not answer. Click **Demo clock +7 days** twice: on day 14 after the application the reminder goes out on its own, listing the bank statement, and pops up in the portal. (The row's button now reads **Send reminder**, to send it at once instead.)
+7. Upload the bank statement in the portal — the case moves to Ready for decision and no further reminder is sent.
 
-**What to say:** "Nobody had to remember to chase. The request named exactly what was missing, and three working days later the system reminded the customer — once, with approved wording — and stopped the moment the document arrived."
+**What to say:** "Nobody had to remember to chase. The request named exactly what was missing, and when the customer went quiet the system reminded them — once, with approved wording — and stopped the moment the document arrived."
 
 ---
 
@@ -307,7 +307,7 @@ Both are synthetic specimens. Never upload a real document.
 
 1. Open Case 12 and the **Decision & messages tab**, with the role on the form set to **compliance**. Choose **escalate**. The **Customer message** preview reads *"No automatic message. Compliance decides separately what the customer is told."* — for every decision offered.
 2. Record **escalate** with an escalation target and reason. **Nothing is sent.** The **Customer message** box at the top of the tab repeats *"No automatic message …"*, **Message history** shows a compliance task, *decide customer communication*, and the sidebar's **Customer** card reads *awaiting compliance approval*.
-3. Compliance now approves the customer message as a **separate step**: in the Customer message box click **Approve the customer message as compliance** — or in the action box's option **2 Send a message only**, where that withheld message is already filled in as the suggestion; click **Draft and approve as me**. The generic `TPL-0004` holding message is sent (*Simulated - sent to demo outbox*).
+3. Compliance now approves the customer message as a **separate step**: in the Customer message box click **Approve the customer message as compliance** The generic `TPL-0004` holding message is sent (*Simulated - sent to demo outbox*).
 4. Optional: the **Timeline** tab shows two separate events, `human_decision_recorded` and then `customer_communication_approved`: deciding the case and approving what the customer reads are two acts, each with a name on it.
 
 **What to say:** "On a confirmed match the system writes nothing to the customer on its own — not even with the decision. What the customer is told is a compliance decision in its own right, and the audit trail keeps it separate."

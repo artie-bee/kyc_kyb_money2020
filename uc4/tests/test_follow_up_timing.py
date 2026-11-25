@@ -227,6 +227,39 @@ def test_advancing_the_demo_clock_30_days_closes_case_14_as_withdrawn(env):
     assert kinds == ["reminder", "case_closed"]
 
 
+def test_each_click_moves_the_demo_clock_one_day_inside_a_console_request(env):
+    # The console runs every request on the demo clock already; the advance
+    # must not add the days so far a second time.
+    conn = env["conn"]
+    start = clock.current().today()
+    for n in (1, 2, 3):
+        with clock.use(data.demo_clock(conn)):
+            result = data.advance_demo_clock(conn, 1, "analyst.test")
+        assert result["total"] == n
+        assert result["date"] == (start + timedelta(days=n)).isoformat()
+
+
+def test_minus_one_day_moves_only_the_date_and_never_before_the_start(env):
+    conn = env["conn"]
+    start = clock.current().today()
+    with pytest.raises(ValueError):
+        data.rewind_demo_clock(conn, "analyst.test")
+    assert 'value="-1" title="Moves the date back only: messages already sent stay ' \
+           'sent" disabled' in render.page("x", "", "Case detail", conn=conn, case_id=CASE)
+    for days in (7, 7):
+        data.advance_demo_clock(conn, days, "analyst.test")
+    sent = conn.execute("SELECT COUNT(*) FROM communication WHERE case_id = ? AND"
+                        " sent_status = 'sent'", (CASE,)).fetchone()[0]
+    result = data.rewind_demo_clock(conn, "analyst.test")
+    assert result["total"] == data.demo_clock_days(conn) == 13
+    assert result["date"] == (start + timedelta(days=13)).isoformat()
+    assert conn.execute("SELECT COUNT(*) FROM communication WHERE case_id = ? AND"
+                        " sent_status = 'sent'", (CASE,)).fetchone()[0] == sent, \
+        "messages already sent stay sent"
+    # forward again from where it stands, not from the highest total ever
+    assert data.advance_demo_clock(conn, 1, "analyst.test")["total"] == 14
+
+
 def test_reset_demo_puts_the_demo_clock_back_to_the_start(env):
     data.advance_demo_clock(env["conn"], 7, "analyst.test")
     env["conn"].close()
@@ -282,6 +315,10 @@ def test_the_console_has_the_labelled_control_and_the_portal_has_none(env):
                               {"days": "7", "back": "/case/" + CASE})
         assert status == 303 and "advanced%207%20day" in where
         assert "(+7 days)" in go(cbase, "/case/" + CASE)[2]
+        status, where, _ = go(cbase, "/action/demo-clock",
+                              {"days": "-1", "back": "/case/" + CASE})
+        assert status == 303 and "moved%20back%201%20day" in where
+        assert "(+6 days)" in go(cbase, "/case/" + CASE)[2]
 
         # the portal: no control, no label - but it keeps the console's date
         status, _, _ = go(pbase, "/demo/open", {"case_id": CASE})
@@ -292,7 +329,7 @@ def test_the_console_has_the_labelled_control_and_the_portal_has_none(env):
         view = data.connect(path).execute(
             "SELECT timestamp FROM audit_event WHERE case_id = ? AND action = 'message_viewed'"
             " ORDER BY event_id DESC", (CASE,)).fetchone()
-        assert view[0][:10] == (DEMO_START + timedelta(days=7)).date().isoformat(), \
+        assert view[0][:10] == (DEMO_START + timedelta(days=6)).date().isoformat(), \
             "the portal stamps its events on the console's demo date"
     finally:
         for httpd in (console, portal):

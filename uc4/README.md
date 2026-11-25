@@ -180,6 +180,11 @@ contact, people, owners (with percentages, held directly or through a company),
 a few yes/no facts, then check and send. It works with JavaScript off. Answers
 travel between steps as hidden fields, so nothing is stored until it is sent.
 
+- **A condition that applies makes the item required.** On a portal case, a
+  conditional rule answered "yes" (card spend above 50,000 EUR → bank
+  statement; remote onboarding → selfie) goes on the checklist as required,
+  with the reason in its note, and the case waits for it. A "no" is still a
+  waived item. The scripted WAL-ONB- cases keep the dataset's levels.
 - **The customer never chooses an applicant type.** Sending calls the existing
   intake (`process_application`), and Step 1 classifies from the facts with the
   AT rules. A form field that tries to name a type is dropped on arrival.
@@ -219,9 +224,9 @@ returns, read fresh from the `checklist_item` rows on every request. The portal
 names no document type and counts nothing itself.
 
 - **Shown:** required items; optional items, labelled *optional* and left out of
-  the three header counts; items an analyst adds later (console, Checklist tab,
-  *Request another document*), which appear at once and are named generically
-  on a case with a restricted finding. **Not shown:** waived items, and
+  the three header counts; items added later (`data.add_checklist_item`; the
+  console no longer offers a form for it), which appear at once and are named
+  generically on a case with a restricted finding. **Not shown:** waived items, and
   conditions the form did not answer until an analyst confirms they apply
   (Checklist tab, *Applies / Does not apply*).
 - **Four statuses only:** Accepted, Under review (any hold, including the mock
@@ -270,6 +275,22 @@ A second pack is committed in `demo_packs/vaher_studio/`, for Vaher Studio OÜ
 (registry code 16880342). It has fixed files and its own `manifest.json`,
 recognised in the same way, so a demo that uses it never needs the live model.
 Its proof of address is dated 2026-09-10, so it ages like a real one.
+
+A third pack, `demo_packs/kivirand_digital/`, is for Kivirand Digital OÜ
+(registry code 16924517), the follow-up reminder showcase. `CASE_DETAILS.md`
+there lists the form values and which file goes with which item. The source of
+funds declaration is kept in `upload_during_demo/`, so it is not uploaded by
+accident at set-up. `python tools/make_reminder_showcase.py` sets the showcase
+up as a new WAL-DEMO- case: the application, the ten set-up files, and the
+written request for the source of funds declaration. The reminder is left for
+the presenter. Run it again after Reset demo.
+
+`demo_packs/lumen_harbour_followup/13_ownership_chart.pdf` is the ownership
+chart for Lumen Harbour OU that the ownership request (TPL-0003) asks for after
+review (`python tools/make_sample_documents.py --lumen-followup` rebuilds it
+with the same bytes). Uploaded in the portal, it is read at once, and the
+console suggests what to do next: keep the assessment or re-run verification,
+with the reason filled in, and a message confirming it arrived.
 
 ### Hybrid extraction for new portal uploads
 
@@ -618,8 +639,9 @@ analyst added to the checklist after the first round, gets one reminder that man
 business days (Monday to Friday) after it was sent, if the customer still owes it
 (communication.follow_up_requests / follow_up_due; audited
 `follow_up_reminder_sent`). The customer's first document request keeps its
-14-day reminder and 30-day closure. Send a message suggests a request for any
-document not yet asked for in writing, before suggesting a reminder.
+14-day reminder and 30-day closure. The Request button on an outstanding
+checklist row sends a request for any document not yet asked for in writing,
+and a reminder after that.
 
 Optional early nudge: `unviewed_nudge` in kb/communication_schedule.csv, 0 (off)
 by default. Set to N days and a request the customer has not viewed after N days
@@ -630,10 +652,12 @@ run regardless of views.
 Demo clock (demo builds, analyst console only; `WALLESTER_UC4_DEMO_BUILD=0` turns
 it off): the sidebar's "Demo clock - not real time" moves the injected clock on
 +1 or +7 days and runs the normal schedule for every case one day at a time, so
-reminders and case 14's day-30 closure fall exactly as the rules say. Each
-advance is audited (`demo_clock_advanced`) on every case; the offset is read
-back from those rows, so the portal keeps the same date (it shows no control),
-and Reset demo returns it to the start.
+reminders and case 14's day-30 closure fall exactly as the rules say. -1 day
+moves it back one day, never before the start; only the date moves - a message
+already sent stays sent, and nothing is re-run. Each advance or step back is
+audited (`demo_clock_advanced`, `demo_clock_rewound`) on every case; the offset
+is the total the latest of those rows records, so the portal keeps the same
+date (it shows no control), and Reset demo returns it to the start.
 
 Case timeline (top of the Timeline tab): the key moments in plain words -
 application received, each alert (hold placed, with its reason), opened by

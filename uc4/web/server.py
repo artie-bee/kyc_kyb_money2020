@@ -337,7 +337,13 @@ class Handler(BaseHTTPRequestHandler):
                     "Its reference will not be issued again.")
 
         if path == "/action/demo-clock":
-            result = data.advance_demo_clock(conn, int(form.get("days") or 0), reviewer)
+            days = int(form.get("days") or 0)
+            if days == -1:
+                result = data.rewind_demo_clock(conn, reviewer)
+                return (data.DEMO_CLOCK_LABEL + ": moved back 1 day to " + result["date"]
+                        + " (+" + str(result["total"]) + " in total). Messages already "
+                        "sent stay sent.")
+            result = data.advance_demo_clock(conn, days, reviewer)
             return (data.DEMO_CLOCK_LABEL + ": advanced " + str(result["days"])
                     + " day(s) to " + result["date"] + " (+" + str(result["total"])
                     + " in total); " + str(len(result["sent"]))
@@ -361,11 +367,28 @@ class Handler(BaseHTTPRequestHandler):
             return "Field " + form["field_id"] + " accepted as read."
 
         if path == "/action/record-decision":
+            # One optional Comments box on the form. When the decision differs
+            # from the recommendation it is the override reason the backend
+            # requires; otherwise it is kept with the rationale. Escalation goes
+            # to compliance unless a target is posted.
+            comments = (form.get("comments") or "").strip()
+            rationale = form.get("rationale", "")
+            override = form.get("override_reason") or None
+            recommended = data.recommended_action(conn, form["case_id"])
+            if form["choice"] != recommended and not override:
+                if not comments:
+                    raise ValueError(
+                        "Your decision differs from the recommendation (" + recommended
+                        + "). Say why in Comments; it is recorded as the override reason.")
+                override = comments
+            elif comments:
+                rationale = rationale.rstrip() + "\n\nComment: " + comments
+            target = form.get("escalation_target") or (
+                "compliance" if form["choice"] == "escalate" else None)
             result = data.record_decision(
                 conn, form["case_id"], reviewer, role, form["choice"],
-                form.get("reason_code", "demo_decision"), form.get("rationale", ""),
-                override_reason=(form.get("override_reason") or None),
-                escalation_target=(form.get("escalation_target") or None))
+                form.get("reason_code", ""), rationale,
+                override_reason=override, escalation_target=target)
             extra = ""
             if result.override_flag:
                 extra = " (recorded as a " + str(result.override_direction) + " override)"

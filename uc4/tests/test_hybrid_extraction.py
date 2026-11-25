@@ -351,6 +351,25 @@ def test_the_vaher_studio_pack_is_recognised_file_by_file():
     assert found and found["legal_name"] == "Vaher Studio OÜ"
 
 
+def test_the_kivirand_digital_pack_is_recognised_file_by_file():
+    folder = ROOT / "demo_packs" / "kivirand_digital"
+    manifest = json.loads((folder / "manifest.json").read_text(encoding="utf-8"))
+    files = sorted(p for p in folder.rglob("*")
+                   if p.is_file() and p.name not in ("manifest.json", "CASE_DETAILS.md"))
+    assert len(files) == 11
+    for path in files:
+        entry = demo_samples.recognise(path=path)
+        assert entry is not None and entry["file"] == path.name, path.name
+        assert not live_reading.wants_live("WAL-DEMO-0001", path.read_bytes())
+    # Kept apart so it is not uploaded at set-up, and still recognised.
+    sof = demo_samples.recognise(path=folder / "upload_during_demo" / "10_source_of_funds_declaration.pdf")
+    assert sof["document_type"] == "source_of_funds_declaration"
+    assert manifest["register"]["number"] == "16924517"
+    from orchestrator import providers
+    found = providers.lookup_register(manifest["register"]["number"])
+    assert found and found["legal_name"] == "Kivirand Digital OÜ"
+
+
 def test_files_set_up_for_typing_before_they_were_recognised_can_be_read(conn, pack, tmp_path,
                                                                            monkeypatch):
     """What happened to WAL-DEMO-0001: the files were uploaded, accepted by an
@@ -392,3 +411,22 @@ def test_files_set_up_for_typing_before_they_were_recognised_can_be_read(conn, p
     block = next(b for b in blocks(page) if "<h3>Fields</h3>" in b and 'stored as <span class="type">'
                  + current(c, case_id, "Certificate of incorporation")["file_name"] in b)
     assert data.DEMO_SAMPLE_LABEL in block.split("<h3>Fields</h3>", 1)[1]
+
+
+def test_a_date_read_as_printed_day_first_goes_through_the_date_rules():
+    # The extractor reads dates as printed; an ID card showing 10.05.2027 once
+    # stopped the live worker with a ValueError.
+    from datetime import date
+    assert document_quality.parse_date("2027-05-10") == date(2027, 5, 10)
+    assert document_quality.parse_date("10.05.2027") == date(2027, 5, 10)
+    assert document_quality.parse_date("10/05/2027") == date(2027, 5, 10)
+    assert document_quality.parse_date("31.02.2027") is None
+    assert document_quality.parse_date("next May") is None
+    kb = data.kb()
+    today = date(2026, 9, 30)
+    assert document_quality.run_date_rules("id_document", {"expiry_date": "10.05.2027"},
+                                           None, kb, today) == set()
+    assert document_quality.run_date_rules("id_document", {"expiry_date": "10.05.2025"},
+                                           None, kb, today) == {"expired"}
+    assert document_quality.run_date_rules("id_document", {"expiry_date": "unreadable"},
+                                           None, kb, today) == set()

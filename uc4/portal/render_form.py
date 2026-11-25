@@ -10,7 +10,6 @@ until the application is sent, and every step is an ordinary form post - no
 script is needed to move between them.
 """
 
-from orchestrator.providers import SIMULATED_LOOKUP as LOOKUP_LABEL
 from portal import apply
 from portal.render import e, note
 
@@ -83,13 +82,8 @@ def _step_fields(step, answers) -> list:
                                     _text("trading_name", answers))),
             ("entity_type", _field("Legal form",
                                    _select("entity_type", answers, apply.ENTITY_TYPES))),
-            ("registration_number", _field(
-                "Registration number",
-                _text("registration_number", answers)
-                + '<button class="btn lookup" type="submit" name="nav" value="lookup"'
-                  ' formnovalidate>Look up my company</button>',
-                "Fills in the name and address below from " + LOOKUP_LABEL.lower()
-                + ". You can still change them.")),
+            ("registration_number", _field("Registration number",
+                                           _text("registration_number", answers))),
             ("country", _field("Country it is registered in",
                                _select("country", answers, apply.COUNTRIES))),
             ("registered_address", _field("Registered address",
@@ -157,15 +151,6 @@ def _review(answers) -> str:
              for key, question in apply.FACTS]
     return ('<dl class="review">' + "".join("<dt>" + e(k) + "</dt><dd>" + e(v) + "</dd>"
                                             for k, v in rows) + "</dl>")
-
-
-def lookup_note(found) -> str:
-    """What the lookup found, labelled for what it is."""
-    if found:
-        return note("Filled in the business name and registered address. Check them and "
-                    "change anything that is not right.", "info", LOOKUP_LABEL)
-    return note("Nothing found for that registration number. Type the name and address "
-                "yourself.", "warn", LOOKUP_LABEL)
 
 
 def application_form(step, answers, errors=None, notice="") -> str:

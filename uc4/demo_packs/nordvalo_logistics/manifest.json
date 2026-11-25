@@ -1,0 +1,406 @@
+{
+  "label": "mock: recognised demo sample file",
+  "company": "Nordvalo Logistics OÜ",
+  "register": {
+    "number": "16987231",
+    "name": "Nordvalo Logistics OÜ",
+    "address": "Peterburi tee 46, 11415 Tallinn, Estonia"
+  },
+  "note": "Fictional documents (SPECIMEN, invented issuers) for Nordvalo Logistics OÜ: two directors, card spend above 50,000 EUR. The business bank statement is kept in upload_during_demo/ for the reminder story.",
+  "files": {
+    "6554168a7caeba9a1eaab10c02849c0e609a60c3b23df2cdf74e53bf336f2f35": {
+      "file": "01_certificate_of_incorporation.pdf",
+      "document_type": "certificate_of_incorporation",
+      "person": null,
+      "quality_flags": [],
+      "expiry_date": null,
+      "document_date": null,
+      "fields": [
+        {
+          "name": "company_name",
+          "value": "Nordvalo Logistics OÜ",
+          "confidence": 0.98,
+          "source_page": 1
+        },
+        {
+          "name": "registration_number",
+          "value": "16987231",
+          "confidence": 0.98,
+          "source_page": 1
+        },
+        {
+          "name": "incorporation_date",
+          "value": "2023-03-14",
+          "confidence": 0.98,
+          "source_page": 1
+        },
+        {
+          "name": "registered_address",
+          "value": "Peterburi tee 46, 11415 Tallinn, Estonia",
+          "confidence": 0.98,
+          "source_page": 1
+        }
+      ]
+    },
+    "8c58f82100c6c1250d67f7d1f5356e7d6f8dd00dc1b56d28989a334aedcfec25": {
+      "file": "02_company_registration_extract.pdf",
+      "document_type": "registry_extract",
+      "person": null,
+      "quality_flags": [],
+      "expiry_date": null,
+      "document_date": "2026-09-28",
+      "fields": [
+        {
+          "name": "company_name",
+          "value": "Nordvalo Logistics OÜ",
+          "confidence": 0.98,
+          "source_page": 1
+        },
+        {
+          "name": "legal_name",
+          "value": "Nordvalo Logistics OÜ",
+          "confidence": 0.98,
+          "source_page": 1
+        },
+        {
+          "name": "registration_number",
+          "value": "16987231",
+          "confidence": 0.98,
+          "source_page": 1
+        },
+        {
+          "name": "registered_address",
+          "value": "Peterburi tee 46, 11415 Tallinn, Estonia",
+          "confidence": 0.98,
+          "source_page": 1
+        },
+        {
+          "name": "entity_status",
+          "value": "active",
+          "confidence": 0.98,
+          "source_page": 1
+        },
+        {
+          "name": "registered_shareholder",
+          "value": "Anneli Rebane (60%); Tanel Sepp (40%)",
+          "confidence": 0.98,
+          "source_page": 1
+        }
+      ]
+    },
+    "02586e92b7f135d4da751a1c5cb8f3255b2ed2f750bf2b7c32f8e6aae1b5f559": {
+      "file": "03_tax_registration_certificate.pdf",
+      "document_type": "tax_registration_certificate",
+      "person": null,
+      "quality_flags": [],
+      "expiry_date": null,
+      "document_date": "2026-09-28",
+      "fields": [
+        {
+          "name": "vat_number",
+          "value": "EE102987231",
+          "confidence": 0.98,
+          "source_page": 1
+        },
+        {
+          "name": "tax_number",
+          "value": "16987231",
+          "confidence": 0.98,
+          "source_page": 1
+        }
+      ]
+    },
+    "74b73882e1d59f6648df87c5f23ec593bad955aac47d106e1ff5285e7a478236": {
+      "file": "04_register_of_directors.pdf",
+      "document_type": "director_register",
+      "person": null,
+      "quality_flags": [],
+      "expiry_date": null,
+      "document_date": "2026-09-28",
+      "fields": [
+        {
+          "name": "director_name",
+          "value": "Anneli Rebane",
+          "confidence": 0.98,
+          "source_page": 1
+        },
+        {
+          "name": "director_name_2",
+          "value": "Tanel Sepp",
+          "confidence": 0.98,
+          "source_page": 1
+        },
+        {
+          "name": "appointment_date",
+          "value": "2023-03-14",
+          "confidence": 0.98,
+          "source_page": 1
+        }
+      ]
+    },
+    "e313b2cec28ce968929258c8e26ed4c7fead1fa5ee8ef3567b8710623ebb0c27": {
+      "file": "05_list_of_authorised_signatories.pdf",
+      "document_type": "authorised_signatory_list",
+      "person": null,
+      "quality_flags": [],
+      "expiry_date": null,
+      "document_date": "2026-09-28",
+      "fields": [
+        {
+          "name": "signatory_name",
+          "value": "Anneli Rebane",
+          "confidence": 0.98,
+          "source_page": 1
+        }
+      ]
+    },
+    "8ffa4a0a3e55aaa6dd7381e172ff9a80ba5d0bab2d8b5e98e172060c3524f645": {
+      "file": "06_declaration_of_beneficial_owners.pdf",
+      "document_type": "ubo_declaration",
+      "person": null,
+      "quality_flags": [],
+      "expiry_date": null,
+      "document_date": "2026-09-20",
+      "fields": [
+        {
+          "name": "ubo_name",
+          "value": "Anneli Rebane",
+          "confidence": 0.98,
+          "source_page": 1
+        },
+        {
+          "name": "ownership_percentage",
+          "value": "60",
+          "confidence": 0.98,
+          "source_page": 1
+        },
+        {
+          "name": "control_basis",
+          "value": "Direct shareholding",
+          "confidence": 0.98,
+          "source_page": 1
+        },
+        {
+          "name": "ubo_name_2",
+          "value": "Tanel Sepp",
+          "confidence": 0.98,
+          "source_page": 1
+        }
+      ]
+    },
+    "f80809afcb3348603e36daa782ec596025d0d908346703da48e3ef28626a1534": {
+      "file": "07_identity_document_anneli_rebane.png",
+      "document_type": "id_document",
+      "person": "Anneli Rebane",
+      "quality_flags": [],
+      "expiry_date": "2027-05-10",
+      "document_date": null,
+      "fields": [
+        {
+          "name": "full_name",
+          "value": "Anneli Rebane",
+          "confidence": 0.98,
+          "source_page": 1
+        },
+        {
+          "name": "date_of_birth",
+          "value": "1985-06-21",
+          "confidence": 0.98,
+          "source_page": 1
+        },
+        {
+          "name": "document_number",
+          "value": "AC0000123",
+          "confidence": 0.98,
+          "source_page": 1
+        },
+        {
+          "name": "expiry_date",
+          "value": "2027-05-10",
+          "confidence": 0.98,
+          "source_page": 1
+        }
+      ]
+    },
+    "d8835935d871f53f820a7b7db870d3c5a76dcdc72f7c4369e16766910cb974ad": {
+      "file": "08_identity_document_tanel_sepp.png",
+      "document_type": "id_document",
+      "person": "Tanel Sepp",
+      "quality_flags": [],
+      "expiry_date": "2028-11-02",
+      "document_date": null,
+      "fields": [
+        {
+          "name": "full_name",
+          "value": "Tanel Sepp",
+          "confidence": 0.98,
+          "source_page": 1
+        },
+        {
+          "name": "date_of_birth",
+          "value": "1990-02-09",
+          "confidence": 0.98,
+          "source_page": 1
+        },
+        {
+          "name": "document_number",
+          "value": "AC0000456",
+          "confidence": 0.98,
+          "source_page": 1
+        },
+        {
+          "name": "expiry_date",
+          "value": "2028-11-02",
+          "confidence": 0.98,
+          "source_page": 1
+        }
+      ]
+    },
+    "bc015e05bd9cd2e257465efcb115876461fe3fb1b5e187ea631615510a2db962": {
+      "file": "09_proof_of_address_anneli_rebane.pdf",
+      "document_type": "proof_of_address",
+      "person": "Anneli Rebane",
+      "quality_flags": [],
+      "expiry_date": null,
+      "document_date": "2026-09-15",
+      "fields": [
+        {
+          "name": "full_name",
+          "value": "Anneli Rebane",
+          "confidence": 0.98,
+          "source_page": 1
+        },
+        {
+          "name": "address",
+          "value": "Kadaka tee 12-5, 12915 Tallinn, Estonia",
+          "confidence": 0.98,
+          "source_page": 1
+        },
+        {
+          "name": "document_date",
+          "value": "2026-09-15",
+          "confidence": 0.98,
+          "source_page": 1
+        },
+        {
+          "name": "issuer",
+          "value": "Harju Demo Energy AS",
+          "confidence": 0.98,
+          "source_page": 1
+        }
+      ]
+    },
+    "9b0b441522fc1084d4fc715b3df4713d0df6576a53e119bb2b79f57dea876145": {
+      "file": "10_proof_of_address_tanel_sepp.pdf",
+      "document_type": "proof_of_address",
+      "person": "Tanel Sepp",
+      "quality_flags": [],
+      "expiry_date": null,
+      "document_date": "2026-09-12",
+      "fields": [
+        {
+          "name": "full_name",
+          "value": "Tanel Sepp",
+          "confidence": 0.98,
+          "source_page": 1
+        },
+        {
+          "name": "address",
+          "value": "Riia 18-3, 51010 Tartu, Estonia",
+          "confidence": 0.98,
+          "source_page": 1
+        },
+        {
+          "name": "document_date",
+          "value": "2026-09-12",
+          "confidence": 0.98,
+          "source_page": 1
+        },
+        {
+          "name": "issuer",
+          "value": "Harju Demo Energy AS",
+          "confidence": 0.98,
+          "source_page": 1
+        }
+      ]
+    },
+    "38ec50f80011a7b20154d2d7a67d54eb9eede98a12c09216266075e3d3ed65b9": {
+      "file": "11_selfie_anneli_rebane.png",
+      "document_type": "liveness_selfie",
+      "person": "Anneli Rebane",
+      "quality_flags": [],
+      "expiry_date": null,
+      "document_date": null,
+      "fields": []
+    },
+    "8d66c7c2954cc6856c791be4101a0aea97c4c863651b27bb2b26ba4fbb9f6a52": {
+      "file": "12_selfie_tanel_sepp.png",
+      "document_type": "liveness_selfie",
+      "person": "Tanel Sepp",
+      "quality_flags": [],
+      "expiry_date": null,
+      "document_date": null,
+      "fields": []
+    },
+    "c0eba87dac6f397882a015f568a2e8e996203a118787fc69918c486028e204fd": {
+      "file": "13_source_of_funds_declaration.pdf",
+      "document_type": "source_of_funds_declaration",
+      "person": null,
+      "quality_flags": [],
+      "expiry_date": null,
+      "document_date": "2026-09-28",
+      "fields": [
+        {
+          "name": "declared_source",
+          "value": "Founders' share capital (25,000 EUR) and revenue from delivery contracts",
+          "confidence": 0.98,
+          "source_page": 1
+        },
+        {
+          "name": "expected_monthly_volume",
+          "value": "65,000 EUR",
+          "confidence": 0.98,
+          "source_page": 1
+        }
+      ]
+    },
+    "aba45104e9607342faa7eef756ce23bb5c0fd8d9f2d9822cfee432a7d2b904da": {
+      "file": "14_business_activity_description.pdf",
+      "document_type": "business_activity_description",
+      "person": null,
+      "quality_flags": [],
+      "expiry_date": null,
+      "document_date": "2026-09-28",
+      "fields": [
+        {
+          "name": "declared_industry",
+          "value": "Courier and last-mile delivery",
+          "confidence": 0.98,
+          "source_page": 1
+        },
+        {
+          "name": "expected_card_usage",
+          "value": "Fuel, van leasing and route-planning software",
+          "confidence": 0.98,
+          "source_page": 1
+        }
+      ]
+    },
+    "9d1d1b2420c58b932657b0461a7139a4f4cb39742a5d919861b52ed1897e6a5a": {
+      "file": "15_business_bank_statement.pdf",
+      "document_type": "bank_statement",
+      "person": null,
+      "quality_flags": [],
+      "expiry_date": null,
+      "document_date": "2026-09-30",
+      "fields": [
+        {
+          "name": "account_holder",
+          "value": "Nordvalo Logistics OÜ",
+          "confidence": 0.98,
+          "source_page": 1
+        }
+      ]
+    }
+  }
+}

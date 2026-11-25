@@ -1,0 +1,289 @@
+{
+  "label": "mock: recognised demo sample file",
+  "company": "Kivirand Digital OÜ",
+  "register": {
+    "number": "16924517",
+    "name": "Kivirand Digital OÜ",
+    "address": "Tartu mnt 64, 10115 Tallinn, Estonia"
+  },
+  "note": "Fictional documents (marked SPECIMEN / fictional issuer) for Kivirand Digital OÜ, the follow-up reminder showcase. Fixed bytes: the proof of address is dated 2026-09-10 and ages like a real one. The source of funds declaration is kept in upload_during_demo/ so it is not uploaded at set-up.",
+  "files": {
+    "1049a09cd0a3099c9573440577882fba59db7faef40983f55144f01d3b9feceb": {
+      "file": "01_certificate_of_incorporation.pdf",
+      "document_type": "certificate_of_incorporation",
+      "person": null,
+      "quality_flags": [],
+      "expiry_date": null,
+      "document_date": null,
+      "fields": [
+        {
+          "name": "company_name",
+          "value": "Kivirand Digital OÜ",
+          "confidence": 0.98,
+          "source_page": 1
+        },
+        {
+          "name": "registration_number",
+          "value": "16924517",
+          "confidence": 0.98,
+          "source_page": 1
+        },
+        {
+          "name": "incorporation_date",
+          "value": "2024-05-06",
+          "confidence": 0.98,
+          "source_page": 1
+        },
+        {
+          "name": "registered_address",
+          "value": "Tartu mnt 64, 10115 Tallinn, Estonia",
+          "confidence": 0.98,
+          "source_page": 1
+        }
+      ]
+    },
+    "05d9c9535f53932585b1091f776ae294b0f60c1f823546ba36629de79b89564d": {
+      "file": "02_company_registration_extract.pdf",
+      "document_type": "registry_extract",
+      "person": null,
+      "quality_flags": [],
+      "expiry_date": null,
+      "document_date": null,
+      "fields": [
+        {
+          "name": "company_name",
+          "value": "Kivirand Digital OÜ",
+          "confidence": 0.98,
+          "source_page": 1
+        },
+        {
+          "name": "legal_name",
+          "value": "Kivirand Digital OÜ",
+          "confidence": 0.98,
+          "source_page": 1
+        },
+        {
+          "name": "registration_number",
+          "value": "16924517",
+          "confidence": 0.98,
+          "source_page": 1
+        },
+        {
+          "name": "registered_address",
+          "value": "Tartu mnt 64, 10115 Tallinn, Estonia",
+          "confidence": 0.98,
+          "source_page": 1
+        },
+        {
+          "name": "entity_status",
+          "value": "active",
+          "confidence": 0.98,
+          "source_page": 1
+        }
+      ]
+    },
+    "8f6e063227c69a4797649524d6a9eb690ef2a952abc240fca9baf4bcbdb1d13d": {
+      "file": "03_tax_registration_certificate.pdf",
+      "document_type": "tax_registration_certificate",
+      "person": null,
+      "quality_flags": [],
+      "expiry_date": null,
+      "document_date": null,
+      "fields": [
+        {
+          "name": "vat_number",
+          "value": "EE102951876",
+          "confidence": 0.98,
+          "source_page": 1
+        }
+      ]
+    },
+    "49acdce1ed1cd494c60966cd91360b0e1f202bed1271957f2f5b0ced0d60a195": {
+      "file": "04_register_of_directors.pdf",
+      "document_type": "director_register",
+      "person": null,
+      "quality_flags": [],
+      "expiry_date": null,
+      "document_date": null,
+      "fields": [
+        {
+          "name": "director_name",
+          "value": "Mart Kivirand",
+          "confidence": 0.98,
+          "source_page": 1
+        },
+        {
+          "name": "appointment_date",
+          "value": "2024-05-06",
+          "confidence": 0.98,
+          "source_page": 1
+        }
+      ]
+    },
+    "182b48b83e94999f8d014cb7cdb9c98fc3ef5e7db919799f901d98bef50c1d81": {
+      "file": "05_list_of_authorised_signatories.pdf",
+      "document_type": "authorised_signatory_list",
+      "person": null,
+      "quality_flags": [],
+      "expiry_date": null,
+      "document_date": null,
+      "fields": [
+        {
+          "name": "signatory_name",
+          "value": "Mart Kivirand",
+          "confidence": 0.98,
+          "source_page": 1
+        }
+      ]
+    },
+    "dc3426fcef0f5423259b2a7d9ac1d48e86ee1ec583d5663f18fe24ff90442729": {
+      "file": "06_declaration_of_beneficial_owners.pdf",
+      "document_type": "ubo_declaration",
+      "person": null,
+      "quality_flags": [],
+      "expiry_date": null,
+      "document_date": null,
+      "fields": [
+        {
+          "name": "ubo_name",
+          "value": "Mart Kivirand",
+          "confidence": 0.98,
+          "source_page": 1
+        },
+        {
+          "name": "ownership_percentage",
+          "value": "100",
+          "confidence": 0.98,
+          "source_page": 1
+        },
+        {
+          "name": "control_basis",
+          "value": "Direct, via share ownership",
+          "confidence": 0.98,
+          "source_page": 1
+        }
+      ]
+    },
+    "3c28a4f56fbe1270966ba294731b96127547e7499a2ee6b1c621841680201fb1": {
+      "file": "07_identity_document_mart_kivirand.jpg",
+      "document_type": "id_document",
+      "person": "Mart Kivirand",
+      "quality_flags": [],
+      "expiry_date": "2032-08-15",
+      "document_date": null,
+      "fields": [
+        {
+          "name": "full_name",
+          "value": "Mart Kivirand",
+          "confidence": 0.98,
+          "source_page": 1
+        },
+        {
+          "name": "date_of_birth",
+          "value": "1987-11-02",
+          "confidence": 0.98,
+          "source_page": 1
+        },
+        {
+          "name": "document_number",
+          "value": "SPEC-EE-5820914",
+          "confidence": 0.98,
+          "source_page": 1
+        },
+        {
+          "name": "expiry_date",
+          "value": "2032-08-15",
+          "confidence": 0.98,
+          "source_page": 1
+        }
+      ]
+    },
+    "9f82ef5cd6c530f5518b8c3faad81d7d8a948df12a1e9223e364abcadf96f28a": {
+      "file": "08_proof_of_address_mart_kivirand.pdf",
+      "document_type": "proof_of_address",
+      "person": "Mart Kivirand",
+      "quality_flags": [],
+      "expiry_date": null,
+      "document_date": "2026-09-10",
+      "fields": [
+        {
+          "name": "document_date",
+          "value": "2026-09-10",
+          "confidence": 0.98,
+          "source_page": 1
+        },
+        {
+          "name": "full_name",
+          "value": "Mart Kivirand",
+          "confidence": 0.98,
+          "source_page": 1
+        },
+        {
+          "name": "address",
+          "value": "Kadaka tee 21-14, 12915 Tallinn, Estonia",
+          "confidence": 0.98,
+          "source_page": 1
+        },
+        {
+          "name": "issuer",
+          "value": "Tallinn Energy Demo AS",
+          "confidence": 0.98,
+          "source_page": 1
+        }
+      ]
+    },
+    "82d055d3438c68fc1389f907234dbfb1483370a283389d50ef9cbeb0bb35dff6": {
+      "file": "09_selfie_mart_kivirand.jpg",
+      "document_type": "liveness_selfie",
+      "person": "Mart Kivirand",
+      "quality_flags": [],
+      "expiry_date": null,
+      "document_date": null,
+      "fields": []
+    },
+    "e6cb471de5d7d01457650188e1b6a5a049a1b4d6f7b631c5883b8310835975ba": {
+      "file": "10_source_of_funds_declaration.pdf",
+      "document_type": "source_of_funds_declaration",
+      "person": null,
+      "quality_flags": [],
+      "expiry_date": null,
+      "document_date": null,
+      "fields": [
+        {
+          "name": "declared_source",
+          "value": "Client payments for web projects",
+          "confidence": 0.98,
+          "source_page": 1
+        },
+        {
+          "name": "expected_monthly_volume",
+          "value": "EUR 4,500",
+          "confidence": 0.98,
+          "source_page": 1
+        }
+      ]
+    },
+    "68bdeaf12655e45ff7d2fb8a42aabaec6fbbcc7a902f399d61628538d2489a43": {
+      "file": "11_business_activity_description.pdf",
+      "document_type": "business_activity_description",
+      "person": null,
+      "quality_flags": [],
+      "expiry_date": null,
+      "document_date": null,
+      "fields": [
+        {
+          "name": "declared_industry",
+          "value": "Web development and online shop set-up for small retailers",
+          "confidence": 0.98,
+          "source_page": 1
+        },
+        {
+          "name": "expected_card_usage",
+          "value": "Hosting, software licences and online advertising",
+          "confidence": 0.98,
+          "source_page": 1
+        }
+      ]
+    }
+  }
+}

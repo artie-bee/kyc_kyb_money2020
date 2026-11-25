@@ -66,15 +66,19 @@ class KnowledgeBase:
         self.hold_reason_wording = {r["code"]: r["plain_words"]
                                     for r in _read_csv("hold_reason_wording.csv")}
 
-    def reason_codes_for(self, decision: str | None = None) -> list[dict]:
+    def reason_codes_for(self, decision: str | None = None,
+                         offered_only: bool = False) -> list[dict]:
         """The reason codes the KB permits, narrowed to one decision if given.
 
         A code marked `*` applies everywhere. Like every other vocabulary here,
         the list is a CSV rather than free text, so the codes can be counted
         later - two analysts writing "address problem" and "addr mismatch" are
         not countable, and a category nobody can count is not a category.
+        offered_only leaves out the codes kept only so the dataset's recorded
+        decisions still replay (offered = false): accepted, never offered.
         """
-        rows = self.decision_reason_codes
+        rows = [r for r in self.decision_reason_codes
+                if not offered_only or (r.get("offered") or "true").lower() == "true"]
         if decision is None:
             return rows
         return [r for r in rows

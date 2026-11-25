@@ -51,6 +51,12 @@ def cell(page, case_id):
     return re.search(r'<td class="cell-alert"[^>]*>(.*?)</td>', row, re.S).group(1)
 
 
+def closed(page, case_id):
+    row = re.search(r'<tr class="rowlink" data-href="/case/' + case_id + r'".*?</tr>',
+                    page, re.S).group(0)
+    return re.search(r'<td class="cell-closed"[^>]*>(.*?)</td>', row, re.S).group(1)
+
+
 def text(html):
     return " ".join(re.sub(r"<[^>]+>", " ", html).replace("&middot;", "·").split())
 
@@ -78,13 +84,15 @@ def test_advancing_the_demo_clock_one_day_turns_3_hrs_into_1_day(conn):
     assert shown == "2026-09-28 09:00 UTC · 1 day ago"
 
 
-def test_no_open_alert_shows_a_dash_and_sorts_last(conn):
+def test_a_decided_case_says_how_it_ended_and_sorts_last(conn):
     decision.record_decision(conn, "WAL-ONB-0010", "analyst.test", "analyst", "approve",
-                             "demo_decision", "clean", [], kb=KB)
+                             "all_mandatory_checks_passed", "clean", [], kb=KB)
     page = render.dashboard(conn, {"view": "all"})
-    assert text(cell(page, "WAL-ONB-0010")) == "—"
-    assert 'data-key="~"' in page and f'data-key="{PLACED}"' in page, \
-        "the sort key is the stored time; no alert sorts after every time"
+    assert text(closed(page, "WAL-ONB-0010")).endswith("approve"), "how it closed"
+    shown = text(cell(page, "WAL-ONB-0010"))
+    assert shown.endswith("UTC") and "ago" not in shown, "when it came in; a closed alert has no age"
+    assert 'data-key="~' in page and f'data-key="{PLACED}"' in page, \
+        "open alerts sort by their time; closed ones after every open one"
 
 
 def test_the_removed_columns_are_gone_but_the_case_detail_keeps_the_data(conn):
@@ -106,4 +114,28 @@ def test_the_case_column_comes_first_and_the_table_is_compact(conn):
     laptop without a sideways scroll (checked by eye at 1366 px)."""
     head = re.findall(r"<th scope=\"col\"[^>]*>(\w[\w ]*)",
                       render.dashboard(conn, {"view": "all"}).split('id="cases"')[1])
-    assert head[0] == "Case" and len(head) == 8 and "Applicant" not in head
+    assert head[0] == "Case" and len(head) == 10 and "Applicant" not in head
+    assert head[-3:] == ["Alert came in", "Alert closed", "Acknowledged "], head[-3:]
+
+
+def test_a_case_ready_for_decision_shows_when_it_became_ready(conn):
+    # No hold is open, but the case waits on a person: its alert is the moment
+    # its evidence pack was assembled. Once decided, the dash returns.
+    row = conn.execute("SELECT status FROM onboarding_case WHERE case_id = 'WAL-ONB-0010'"
+                       ).fetchone()
+    assert row["status"] == "ready_for_decision"
+    ready_at = conn.execute("SELECT MAX(timestamp) FROM audit_event WHERE case_id ="
+                            " 'WAL-ONB-0010' AND action = 'evidence_pack_generated'"
+                            ).fetchone()[0]
+    page = render.dashboard(conn, {"view": "all"})
+    assert ready_at[:16].replace("T", " ") in text(cell(page, "WAL-ONB-0010"))
+    assert text(closed(page, "WAL-ONB-0010")) == "Still open"
+    decision.record_decision(conn, "WAL-ONB-0010", "analyst.test", "analyst", "approve",
+                             "all_mandatory_checks_passed", "clean", [], kb=KB)
+    page = render.dashboard(conn, {"view": "all"})
+    assert ready_at[:16].replace("T", " ") in text(cell(page, "WAL-ONB-0010")), \
+        "still says when the alert came in"
+    assert text(closed(page, "WAL-ONB-0010")).endswith("approve")
+    row = re.search(r'<tr class="rowlink" data-href="/case/WAL-ONB-0010".*?</tr>', page,
+                    re.S).group(0)
+    assert "Decided by analyst.test" in text(row)

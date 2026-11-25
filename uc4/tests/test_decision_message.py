@@ -57,11 +57,22 @@ def cases(conn):
     return [r[0] for r in conn.execute("SELECT case_id FROM onboarding_case ORDER BY case_id")]
 
 
+def usable_code(conn, case_id, choice):
+    """The first reason code the form offers for this decision that the case
+    allows (a clarification needs its finding, a request something owed), or
+    None when the case allows none of them."""
+    for r in KB.reason_codes_for(choice, offered_only=True):
+        if not decision.reason_problem(conn, case_id, choice, r["code"]):
+            return r["code"]
+    return None
+
+
 def record(conn, case_id, choice, role):
-    recommended = data.risk(conn, case_id)["assessment"]
-    recommended = recommended["recommended_action"] if recommended else "insufficient_evidence"
+    recommended = decision.recommended_action(conn, case_id)
     return decision.record_decision(
-        conn, case_id, role + ".test", role, choice, "demo_decision", "recorded by a test", [],
+        conn, case_id, role + ".test", role, choice,
+        usable_code(conn, case_id, choice) or "required_document_outstanding",
+        "recorded by a test", [],
         override_reason=None if choice == recommended else "a test override",
         escalation_target="compliance.desk" if choice == "escalate" else None, kb=KB)
 
@@ -85,7 +96,15 @@ def test_the_preview_is_the_message_actually_sent_after_the_decision(built, fres
         for role in ("analyst", "compliance"):
             for choice in decision.permitted_decisions(probe, case_id, role, KB):
                 conn = fresh()
-                preview = decision.preview_customer_message(conn, case_id, choice, KB)
+                code = usable_code(conn, case_id, choice)
+                if code is None:
+                    # Nothing to ask and no finding to ask about: every reason is
+                    # refused, and nothing is sent.
+                    with pytest.raises(decision.DecisionRefused):
+                        record(conn, case_id, choice, role)
+                    conn.close()
+                    continue
+                preview = decision.preview_customer_message(conn, case_id, choice, KB, code)
                 before = last_outbox(conn)
                 record(conn, case_id, choice, role)
                 sent = sent_after(conn, before)

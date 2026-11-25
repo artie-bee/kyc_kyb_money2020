@@ -529,3 +529,158 @@ def test_a_pep_scenario_shows_only_neutral_wording_in_the_portal(portal):
 
 if __name__ == "__main__":
     sys.exit(pytest.main([__file__, "-q"]))
+
+
+def test_a_condition_that_applies_makes_the_item_required_and_blocks_the_case(demo):
+    # Card spend above 50,000 EUR asks for a bank statement. On a portal case it
+    # is required: counted, and the case waits for it instead of reaching
+    # Ready for decision without it.
+    conn = demo["conn"]
+    case_id = submit(conn, monthly_spend="65000")
+    items = {i["document_type"]: i for i in data.checklist(conn, case_id)}
+    assert items["bank_statement"]["level"] == "required"
+    assert "card spend above 50000" in items["bank_statement"]["note"]
+    assert items["board_resolution"]["status"] == "waived"          # condition 'no'
+    for item in customer_checklist(conn, case_id)["items"]:
+        if (item["can_upload"] and not item["optional"]
+                and item["checklist_item_id"] != items["bank_statement"]["item_id"]):
+            data.upload_document(conn, case_id, item["checklist_item_id"], "document.pdf", PDF)
+    release_visual_checks(conn, case_id)
+    type_everything_in(conn, case_id)
+    row = conn.execute("SELECT status, next_action_owner FROM onboarding_case WHERE case_id = ?",
+                       (case_id,)).fetchone()
+    assert row["status"] != "ready_for_decision" and row["next_action_owner"] == "customer"
+    progress = console._tab_checklist(conn, case_id)
+    assert "outstanding: bank statement" in progress
+    # The checklist asks the customer itself: the request first, then the reminder.
+    # ...on the bank statement's own row, beside its status.
+    at = progress.find(items["bank_statement"]["item_id"])
+    row = progress[progress.rfind('<div class="check ', 0, at):progress.find("</div>", at)]
+    assert 'name="situation" value="resubmission"' in row and ">Request</button>" in row
+    assert progress.count('class="check__ask"') == 1
+    # ...and the missing item is the first row of the checklist.
+    assert progress.find('<div class="check ') == progress.find(
+        '<div class="check ', progress.find('class="group"'))
+    assert progress.find("bank statement</span>") < progress.find("certificate of incorporation")
+    sent = data.send_message(conn, case_id, "resubmission", "analyst.test")
+    assert sent.sent_status == "sent"
+    after = console._tab_checklist(conn, case_id)
+    assert 'value="reminder"' in after and ">Send reminder</button>" in after
+    # Nothing outstanding, no button.
+    data.upload_document(conn, case_id, items["bank_statement"]["item_id"], "statement.pdf", PDF)
+    release_visual_checks(conn, case_id)
+    type_everything_in(conn, case_id)
+    assert 'class="check__ask"' not in console._tab_checklist(conn, case_id)
+
+
+def test_missing_documents_have_their_own_decision_reason_and_message(demo):
+    # A portal case owing only its bank statement: the form opens on
+    # request_more_information / required_document_outstanding, and the message
+    # is the request naming the bank statement - never the address clarification.
+    from orchestrator.steps import decision
+    conn = demo["conn"]
+    case_id = submit(conn, monthly_spend="65000")
+    items = {i["document_type"]: i for i in data.checklist(conn, case_id)}
+    for item in customer_checklist(conn, case_id)["items"]:
+        if (item["can_upload"] and not item["optional"]
+                and item["checklist_item_id"] != items["bank_statement"]["item_id"]):
+            data.upload_document(conn, case_id, item["checklist_item_id"], "document.pdf", PDF)
+    release_visual_checks(conn, case_id)
+    type_everything_in(conn, case_id)
+    options = data.available_decisions(conn, case_id)
+    assert data.default_decision(conn, case_id, options) == (
+        "request_more_information", decision.REQUIRED_OUTSTANDING)
+    assert decision.recommended_action(conn, case_id) == "request_more_information"
+    preview = decision.preview_customer_message(conn, case_id, "request_more_information",
+                                                data.kb(), decision.REQUIRED_OUTSTANDING)
+    assert preview["template_id"] == "TPL-0001" and "bank statement" in preview["text"]
+    page = console.case_detail(conn, case_id, tab=console.MESSAGES_TAB)
+    assert 'value="required_document_outstanding" title=' in page
+    assert re.search(r'value="required_document_outstanding"[^>]*selected', page)
+
+    # A reason code the KB does not list for the decision is refused.
+    with pytest.raises(decision.DecisionRefused, match="not one for request_more_information"):
+        data.record_decision(conn, case_id, "analyst.test", "analyst",
+                             "request_more_information", "applicant_withdrew", "wrong code")
+
+    # Recorded: the request goes out, the case keeps waiting on the customer.
+    before = conn.execute("SELECT status FROM onboarding_case WHERE case_id = ?",
+                          (case_id,)).fetchone()[0]
+    result = data.record_decision(conn, case_id, "analyst.test", "analyst",
+                                  "request_more_information", decision.REQUIRED_OUTSTANDING,
+                                  "Bank statement still outstanding")
+    assert result.customer_message and result.customer_message.template_id == "TPL-0001"
+    sent = conn.execute("SELECT rendered_text FROM communication WHERE communication_id = ?",
+                        (result.customer_message.communication_id,)).fetchone()[0]
+    assert sent == preview["text"], "the preview is the message sent"
+    row = conn.execute("SELECT status, next_action_owner FROM onboarding_case WHERE case_id = ?",
+                       (case_id,)).fetchone()
+    assert (row["status"], row["next_action_owner"]) == (before, "customer")
+
+    # Once nothing is owed, the reason is refused.
+    data.upload_document(conn, case_id, items["bank_statement"]["item_id"], "statement.pdf", PDF)
+    release_visual_checks(conn, case_id)
+    type_everything_in(conn, case_id)
+    with pytest.raises(decision.DecisionRefused, match="Nothing is outstanding"):
+        data.record_decision(conn, case_id, "analyst.test", "analyst",
+                             "request_more_information", decision.REQUIRED_OUTSTANDING, "again")
+
+
+def test_each_decision_offers_only_its_own_reason_codes(demo):
+    from orchestrator.steps import decision
+    conn, k = demo["conn"], data.kb()
+    codes = {r["code"] for r in k.reason_codes_for()}
+    assert "demo_decision" not in codes
+    offered = {r["code"] for r in k.reason_codes_for(offered_only=True)}
+    # the dataset's own codes still replay, but the form never offers them
+    for legacy in ("pep_match_edd_required", "confirmed_sanctions_match_on_ubo",
+                   "identity_failure_and_provider_non_answer"):
+        assert legacy in codes and legacy not in offered
+    assert [r["code"] for r in k.reason_codes_for("withdrawn", offered_only=True)] == [
+        "applicant_withdrew", "no_response_from_applicant"]
+
+    case_id = submit(conn, monthly_spend="65000")
+    page = console.case_detail(conn, case_id, tab=console.MESSAGES_TAB)
+    assert "demo_decision" not in page and "pep_match_edd_required" not in page
+    # A clarification states its reason, so it needs the finding.
+    assert decision.reason_problem(conn, case_id, "request_more_information",
+                                   "registered_address_mismatch") == \
+        "This case has no address mismatch finding"
+    with pytest.raises(decision.DecisionRefused, match="no address mismatch finding"):
+        data.record_decision(conn, case_id, "analyst.test", "analyst",
+                             "request_more_information", "registered_address_mismatch", "x")
+    with pytest.raises(decision.DecisionRefused, match="no approved customer wording"):
+        data.record_decision(conn, case_id, "analyst.test", "analyst",
+                             "request_more_information", "source_of_funds_clarification", "x")
+    # A document reason sends the request naming what is owed.
+    p = decision.preview_customer_message(conn, case_id, "request_more_information", k,
+                                          "document_unreadable")
+    assert p["template_id"] == "TPL-0001"
+
+
+def test_a_condition_triggered_document_is_listed_but_not_the_next_step_until_requested(demo):
+    # The bank statement (card spend above 50,000 EUR) is listed as still needed
+    # and can be uploaded, but Next step does not point at it until an analyst
+    # asks for it. Selfies are not held back.
+    from app.customer_view import next_step
+    conn = demo["conn"]
+    view = {"partner": False, "closed": False}
+    case_id = submit(conn, monthly_spend="65000")
+    items = {i["document_type"]: i for i in data.checklist(conn, case_id)}
+    by_id = lambda cl: {i["checklist_item_id"]: i for i in cl["items"]}
+    cl = customer_checklist(conn, case_id)
+    bank = by_id(cl)[items["bank_statement"]["item_id"]]
+    assert bank["can_upload"] and bank["awaiting_request"]
+    assert not by_id(cl)[items["liveness_selfie"]["item_id"]]["awaiting_request"]
+    assert "bank statement" not in next_step(cl, view)["text"].lower()
+    for item in cl["items"]:
+        if item["can_upload"] and not item["optional"] and not item["awaiting_request"]:
+            data.upload_document(conn, case_id, item["checklist_item_id"], "document.pdf", PDF)
+    release_visual_checks(conn, case_id)
+    type_everything_in(conn, case_id)
+    cl = customer_checklist(conn, case_id)
+    assert cl["still_needed"] == 1, "still listed as needed"
+    assert next_step(cl, view)["kind"] == "nothing"
+    data.send_message(conn, case_id, "resubmission", "analyst.test")
+    step = next_step(customer_checklist(conn, case_id), view)
+    assert step["kind"] == "upload" and "bank statement" in step["text"].lower()

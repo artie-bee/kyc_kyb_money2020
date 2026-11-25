@@ -255,6 +255,13 @@ a { color:var(--accent); }
                   margin-top:3px; font-size:12px; }
 #cases .cell-detail { max-width:230px; font-size:12.5px; }
 #cases .cell-alert { min-width:0; width:118px; }
+#cases .cell-closed { min-width:0; width:118px; font-size:12.5px; }
+#cases .cell-ack { min-width:190px; max-width:250px; font-size:12.5px; }
+.cell-ack__line { display:block; }
+.cell-ack__line + .cell-ack__line { margin-top:3px; }
+.ack { font-weight:600; }
+.ack--ok { color:var(--ok); }
+.ack--no { color:var(--warn); }
 #cases .chip { white-space:normal; }
 
 @media (max-width:1100px) {
@@ -289,6 +296,7 @@ a { color:var(--accent); }
 .democlock__ahead { color:#e8c877; }
 .democlock__row { display:flex; gap:6px; }
 .democlock__row .btn { flex:1; }
+.democlock__row .btn:disabled { opacity:.45; cursor:not-allowed; }
 
 /* The sidebar "Customer" card: latest message and case state. */
 .railcard { display:flex; flex-direction:column; gap:4px; margin-top:12px;
@@ -643,6 +651,8 @@ th:focus-visible, select:focus-visible, textarea:focus-visible {
                justify-content:flex-end; }
 .check__ids { font-family:var(--mono); font-size:10.5px; color:var(--fg-faint);
               white-space:nowrap; }
+.check__ask { margin:0; }
+.check__ask .btn { padding:3px 10px; font-size:12px; }
 .check__attempts { font-size:11px; color:var(--warn); background:var(--warn-bg);
                    border:1px solid var(--warn-line); border-radius:3px; padding:1px 6px; }
 
@@ -784,3 +794,6 @@ details.doc[data-review]:focus-within, details.doc[data-review]:focus { outline:
 .rolepick { margin:0 0 14px; }
 .rolepick label { font-size:12px; color:var(--fg-mute); }
 .rolepick select { width:auto; }
+
+/* The decision form's optional comments: a small box, not a second rationale. */
+.comments { min-height:0; height:auto; }

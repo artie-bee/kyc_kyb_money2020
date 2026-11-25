@@ -1,6 +1,6 @@
 """
 Usability, strictly presentational: the customer's next-step card and tips, the
-form's simulated company lookup, the console's "why is this case here" panel,
+the console's "why is this case here" panel,
 "My queue" and "Next case", the side-by-side review with A / C shortcuts, and
 the customer status wording in the KB.
 
@@ -216,52 +216,14 @@ def test_no_tip_types_its_own_age_limit_and_shown_limits_equal_the_rule(finished
 
 
 # ---------------------------------------------------------------------------
-# 3. "Look up my company"
+# 3. No company lookup on the form: the customer types the name and address
 # ---------------------------------------------------------------------------
 
-def test_the_lookup_is_labelled_simulated_and_leaves_the_fields_editable(portal):
+def test_the_form_has_no_company_lookup(portal):
     _, base = portal
-    b = Browser(base)
-    status, _, page = b.go("/apply", {"step": "1", "nav": "lookup",
-                                      "registration_number": "EE-16550321"})
-    assert status == 200
-    assert "Simulated registry lookup" in page
-    for name, value in (("legal_name", "Lumen Harbour OU"),
-                        ("registered_address", "Narva mnt 7, 10117 Tallinn")):
-        tag = re.search(r'<input type="text" name="' + name + r'"[^>]*>', page).group(0)
-        assert f'value="{value}"' in tag and "readonly" not in tag and "disabled" not in tag
-    missing = b.go("/apply", {"step": "1", "nav": "lookup", "registration_number": "XX-0"})[2]
-    assert "Simulated registry lookup" in missing and "Nothing found" in missing
-
-
-def test_documents_for_another_company_still_mismatch_after_a_lookup(portal, pack):
-    c, base = portal
-    b = Browser(base)
-    answers = {key: value for _, _, key, value in samples.FORM_VALUES}
-    page = b.go("/apply", {**answers, "legal_name": "", "registered_address": "",
-                           "step": "1", "nav": "lookup"})[2]
-    found = {n: re.search(r'name="' + n + r'" value="([^"]*)"', page).group(1)
-             for n in ("legal_name", "registered_address")}
-    data.submit_application(c, apply.build_application({**answers, **found}, "PORTAL-LOOKUP"))
-    case_id = c.execute("SELECT MAX(case_id) FROM onboarding_case"
-                        " WHERE case_id LIKE 'WAL-DEMO-%'").fetchone()[0]
-    for item in customer_checklist(c, case_id)["items"]:
-        if item["can_upload"] and not item["optional"]:
-            data.upload_document(c, case_id, item["checklist_item_id"], "other.pdf",
-                                 (pack / "01_certificate_of_incorporation.pdf").read_bytes()
-                                 + b"\n")
-    for (doc,) in c.execute("SELECT document_id FROM document WHERE case_id = ? AND"
-                            " quality_status = 'manual_review_required'", (case_id,)).fetchall():
-        data.release_document(c, doc, "analyst.test", "accept", "legible")
-    for doc, fields in data.awaiting_fields(c, case_id).items():
-        typed = {f["name"]: OTHER_COMPANY.get(f["name"], "synthetic" if f["required"] else "")
-                 for f in fields}
-        if "document_date" in typed:
-            typed["document_date"] = clock.current().today().isoformat()
-        data.enter_fields(c, doc, "analyst.test", typed)
-    reg = c.execute("SELECT name_match, number_match, address_match FROM registry_check"
-                    " WHERE case_id = ?", (case_id,)).fetchone()
-    assert tuple(reg) == ("mismatch", "mismatch", "mismatch")
+    page = Browser(base).go("/apply", {"step": "1"})[2]
+    assert "Look up my company" not in page and 'value="lookup"' not in page
+    assert 'name="registration_number"' in page
 
 
 # ---------------------------------------------------------------------------

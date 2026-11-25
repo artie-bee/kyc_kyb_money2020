@@ -30,12 +30,12 @@ sys.path.insert(0, str(UC4))
 
 from orchestrator.kb import KnowledgeBase                                  # noqa: E402
 from orchestrator.steps.communication import scan                          # noqa: E402
-from orchestrator.steps import document_quality                           # noqa: E402
+from orchestrator.steps import communication, document_quality            # noqa: E402
 from orchestrator.steps.document_quality import (CLOSED_STATUSES,          # noqa: E402
                                                  OPEN_FOR_UPLOAD, accepted_extensions,
                                                  uploaded_names)
 from orchestrator.steps.requirement_pack import (ADDED_RULE_ID,            # noqa: E402
-                                                 shown_to_customer)
+                                                 on_request, shown_to_customer)
 
 # Internal status -> what the applicant is told. The wording itself is in
 # kb/customer_status_wording.csv, under neutral keys, so the file a customer's
@@ -301,8 +301,11 @@ def next_step(cl: dict, view: dict) -> dict:
             return {"kind": "upload", "item": item,
                     "text": "Upload a clearer copy: " + _label(item)}
     for item in cl["items"]:
-        if item["can_upload"] and item["status"] == NOT_UPLOADED and not item["optional"]:
-            more = cl["still_needed"] - 1
+        if (item["can_upload"] and item["status"] == NOT_UPLOADED and not item["optional"]
+                and not item.get("awaiting_request")):
+            more = cl["still_needed"] - 1 - sum(
+                1 for i in cl["items"] if i.get("awaiting_request")
+                and i["status"] == NOT_UPLOADED and not i["optional"])
             return {"kind": "upload", "item": item,
                     "text": "Upload your " + _label(item)[0].lower() + _label(item)[1:]
                     + (f" ({more} more after this)" if more > 0 else "")}
@@ -340,6 +343,7 @@ def customer_checklist(conn, case_id: str, kb: KnowledgeBase | None = None) -> d
     open_case = case["status"] not in CLOSED_STATUSES
     restricted = bool(case["restricted_finding"])
 
+    asked = communication.requested_item_ids(conn, case_id)
     items, needed, still_needed = [], 0, 0
     counts = {ACCEPTED: 0, UNDER_REVIEW: 0}
     for item in _items(conn, case_id):
@@ -367,6 +371,9 @@ def customer_checklist(conn, case_id: str, kb: KnowledgeBase | None = None) -> d
                 item["document_type"], item["document_type"].replace("_", " ").capitalize()),
             "person": "" if generic else (item["full_name"] or ""),
             "optional": item["level"] == "optional",
+            # Listed and uploadable, but Next step does not point at it until
+            # an analyst has asked for it (a condition-triggered document).
+            "awaiting_request": on_request(item) and item["item_id"] not in asked,
             "status": status,
             "reason": _reason(current, rules.get(item["rule_id"]), kb, restricted)
             if status == RESUBMIT
