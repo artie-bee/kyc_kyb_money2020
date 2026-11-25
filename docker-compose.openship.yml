@@ -1,0 +1,13 @@
+# Openship deploy: one container running the analyst console (:8700) and the customer portal (:8701).
+services:
+  app:
+    build: .
+    ports:
+      - "8700"
+      - "8701"
+    environment:
+      LLM_PROVIDER: ${LLM_PROVIDER:-groq}
+      GROQ_API_KEY: ${GROQ_API_KEY}
+      WALLESTER_UC4_NARRATOR: ${WALLESTER_UC4_NARRATOR:-live}
+      WALLESTER_UC4_PORTAL_URL: ${WALLESTER_UC4_PORTAL_URL:-https://kyb-kyc-portal.ops.ai.arttechgroup.com:7777}
+    restart: unless-stopped

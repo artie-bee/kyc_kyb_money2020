@@ -1,0 +1,9 @@
+.git
+.env
+**/.env
+**/__pycache__
+**/.pytest_cache
+**/.venv
+uc4/onboarding.db
+uc4/uploads
+uc4/portal_applications
