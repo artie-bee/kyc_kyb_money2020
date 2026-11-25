@@ -154,6 +154,32 @@ def _back(active, case_id):
 # Chrome
 # ---------------------------------------------------------------------------
 
+# Green & Mint (design-docs/theme-kit/head-snippet.html). Before any
+# stylesheet, so the first paint is already in the chosen theme: the stored
+# choice, else the operating system's.
+THEME_HEAD = (
+    '<meta name="color-scheme" content="dark light">\n'
+    "<script>\n"
+    "  (function () {\n"
+    "    var pref = 'system';\n"
+    "    try { var v = localStorage.getItem('ds-theme'); "
+    "if (v === 'light' || v === 'dark') pref = v; } catch (e) {}\n"
+    "    var light = pref === 'light' || (pref === 'system' && "
+    "matchMedia('(prefers-color-scheme: light)').matches);\n"
+    "    document.documentElement.setAttribute('data-theme', light ? 'light' : 'dark');\n"
+    "  })();\n"
+    "</script>\n")
+
+# The Light / Dark / System switch. Hidden until static/theme-switch.js runs,
+# so with the script blocked there is no button that does nothing.
+THEME_SWITCH = (
+    '      <div class="theme-toggle" role="group" aria-label="Colour theme" hidden>'
+    '<button type="button" data-pref="light" aria-pressed="false">Light</button>'
+    '<button type="button" data-pref="dark" aria-pressed="false">Dark</button>'
+    '<button type="button" data-pref="system" aria-pressed="false">System</button>'
+    "</div>\n")
+
+
 def page(title, body, active, conn=None, case_id=None, role="analyst",
          reviewer="analyst.demo", flash=None) -> str:
     # The MOCK badge was removed from the sidebar at the user's request. The
@@ -210,10 +236,14 @@ def page(title, body, active, conn=None, case_id=None, role="analyst",
         '<!doctype html>\n<html lang="en">\n<head>\n<meta charset="utf-8">\n'
         '<meta name="viewport" content="width=device-width, initial-scale=1">\n'
         "<title>" + e(title) + " &middot; Wallester UC4</title>\n"
+        + THEME_HEAD
+        + '<link rel="stylesheet" href="/static/theme.css">\n'
+        '<link rel="stylesheet" href="/static/components.css">\n'
         '<link rel="stylesheet" href="/static/app.css">\n</head>\n<body>\n'
         '<div class="shell">\n'
         '  <aside class="rail">\n'
-        '    <div class="rail__brand">Wallester UC4</div>\n'
+        '    <div class="rail__brand"><span class="rail__tile" aria-hidden="true">W</span>'
+        "Wallester UC4</div>\n"
         + ("    " + badge + "\n" if badge else "")
         + '    <nav class="rail__nav"><span class="rail__label">Screen</span>'
         + "".join(nav) + "</nav>\n"
@@ -226,12 +256,14 @@ def page(title, body, active, conn=None, case_id=None, role="analyst",
         + '    <div class="rail__foot">\n'
         '      <div class="kv"><span>Knowledge base</span><code>'
         + e(data.kb().version) + "</code></div>\n"
-        '      <button class="btn" type="button" id="theme">Toggle theme</button>\n'
-        "    </div>\n"
+        + THEME_SWITCH
+        + "    </div>\n"
         "  </aside>\n"
         '  <main class="main">\n' + flash_html + body + "\n  </main>\n"
         "</div>\n"
-        '<script src="/static/app.js"></script>\n</body>\n</html>\n')
+        '<script src="/static/app.js"></script>\n'
+        '<script type="module" src="/static/theme-switch.js"></script>\n'
+        "</body>\n</html>\n")
 
 
 def _demo_clock_control(conn, case_id, active) -> str:

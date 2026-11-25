@@ -138,18 +138,27 @@ def build(cases: list[dict], kb_version: str, generated: str) -> str:
         for o in owners)
 
     return f"""<!doctype html>
-<html lang="en" data-theme="auto">
+<html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Operations dashboard &middot; Wallester UC4</title>
+<meta name="color-scheme" content="dark light">
+<script>
+  (function () {{
+    var pref = 'system';
+    try {{ var v = localStorage.getItem('ds-theme'); if (v === 'light' || v === 'dark') pref = v; }} catch (e) {{}}
+    var light = pref === 'light' || (pref === 'system' && matchMedia('(prefers-color-scheme: light)').matches);
+    document.documentElement.setAttribute('data-theme', light ? 'light' : 'dark');
+  }})();
+</script>
 <link rel="stylesheet" href="dashboard.css">
 </head>
 <body>
 <div class="shell">
 
   <aside class="rail">
-    <div class="rail__brand">Wallester UC4</div>
+    <div class="rail__brand"><span class="rail__tile" aria-hidden="true">W</span>Wallester UC4</div>
 
     <nav class="rail__nav" aria-label="Screens">
       <span class="rail__label">Screen</span>
@@ -163,7 +172,7 @@ def build(cases: list[dict], kb_version: str, generated: str) -> str:
     <div class="rail__foot">
       <div class="kv"><span>Knowledge base</span><code>{html.escape(kb_version)}</code></div>
       <div class="kv"><span>Generated</span><code>{html.escape(generated)}</code></div>
-      <button class="theme" type="button" id="theme">Toggle theme</button>
+      <div class="theme-toggle" role="group" aria-label="Colour theme" hidden><button type="button" data-pref="light" aria-pressed="false">Light</button><button type="button" data-pref="dark" aria-pressed="false">Dark</button><button type="button" data-pref="system" aria-pressed="false">System</button></div>
     </div>
   </aside>
 
@@ -241,14 +250,17 @@ def build(cases: list[dict], kb_version: str, generated: str) -> str:
 
 
 # The one stylesheet lives in web/static/app.css and is shared with the served
-# console, so the static export and the app cannot drift apart. This file used
+# console (after the Green & Mint kit's theme.css and components.css, which it
+# is built on - all three go into the one exported file, kit first), so the
+# static export and the app cannot drift apart. This file used
 # to carry its own copy, and a change to one left the other stale - which is
 # exactly the failure the comment at the top of app.css claims does not happen.
 STYLESHEET = UC4 / "web" / "static" / "app.css"
+KIT = [UC4 / "web" / "static" / "theme.css", UC4 / "web" / "static" / "components.css"]
 
 
 def stylesheet() -> str:
-    return STYLESHEET.read_text(encoding="utf-8")
+    return "\n".join(f.read_text(encoding="utf-8") for f in [*KIT, STYLESHEET])
 
 
 JS = """/* Filtering and sorting. The table is complete in the HTML; this only narrows
@@ -315,14 +327,40 @@ JS = """/* Filtering and sorting. The table is complete in the HTML; this only n
     });
   });
 
-  var btn = document.getElementById("theme");
-  if (btn) btn.addEventListener("click", function () {
+  // The Light / Dark / System switch: the kit's theme.js, inlined so the page
+  // also works opened straight from disk (file://), where modules do not load.
+  var KEY = "ds-theme";
+  var media = window.matchMedia("(prefers-color-scheme: light)");
+  function getPreference() {
+    try { var v = localStorage.getItem(KEY); if (v === "light" || v === "dark") return v; } catch (e) {}
+    return "system";
+  }
+  function applyTheme(pref) {
+    var theme = pref === "system" ? (media.matches ? "light" : "dark") : pref;
     var root = document.documentElement;
-    var now = root.getAttribute("data-theme");
-    var dark = now === "dark" ||
-      (now !== "light" && window.matchMedia("(prefers-color-scheme: dark)").matches);
-    root.setAttribute("data-theme", dark ? "light" : "dark");
+    if (root.getAttribute("data-theme") === theme) return;
+    root.classList.add("ds-theme-switching");
+    root.setAttribute("data-theme", theme);
+    requestAnimationFrame(function () { requestAnimationFrame(function () {
+      root.classList.remove("ds-theme-switching"); }); });
+  }
+  var group = document.querySelector(".theme-toggle");
+  var buttons = group ? group.querySelectorAll("button[data-pref]") : [];
+  function sync() {
+    Array.prototype.forEach.call(buttons, function (b) {
+      b.setAttribute("aria-pressed", String(b.getAttribute("data-pref") === getPreference()));
+    });
+  }
+  Array.prototype.forEach.call(buttons, function (b) {
+    b.addEventListener("click", function () {
+      var pref = b.getAttribute("data-pref");
+      try { pref === "system" ? localStorage.removeItem(KEY) : localStorage.setItem(KEY, pref); } catch (e) {}
+      applyTheme(pref); sync();
+    });
   });
+  media.addEventListener("change", function () { if (getPreference() === "system") applyTheme("system"); });
+  applyTheme(getPreference()); sync();
+  if (group) group.hidden = false;
 
   apply();
 })();

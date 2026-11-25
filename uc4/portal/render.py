@@ -134,6 +134,12 @@ def page(title, body, view=None, active=None, flash=None, demo=False, step=None,
         '<!doctype html>\n<html lang="en">\n<head>\n<meta charset="utf-8">\n'
         '<meta name="viewport" content="width=device-width, initial-scale=1">\n'
         "<title>" + e(title) + " &middot; Wallester Business onboarding</title>\n"
+        # Green & Mint: the theme is set before the first paint. A file, not
+        # the kit's inline snippet, because the portal's CSP allows no inline script.
+        '<meta name="color-scheme" content="dark light">\n'
+        '<script src="/static/theme-init.js"></script>\n'
+        '<link rel="stylesheet" href="/static/theme.css">\n'
+        '<link rel="stylesheet" href="/static/components.css">\n'
         '<link rel="stylesheet" href="/static/common.css">\n'
         '<link rel="stylesheet" href="/static/portal.css">\n</head>\n<body'
         + (' data-poll="1"' if view is not None else "") + ">\n"
@@ -147,9 +153,14 @@ def page(title, body, view=None, active=None, flash=None, demo=False, step=None,
         '<div class="toasts" id="toasts">' + note_new + "</div>\n"
         '<main class="pmain">\n' + flash_html + next_step_card(step, cl) + body
         + "\n</main>\n"
-        '<footer class="pfoot"><button class="btn btn--quiet" type="button" id="theme" hidden>'
-        "Switch light / dark</button></footer>\n"
-        '<script src="/static/portal.js" defer></script>\n</body>\n</html>\n')
+        # The Light / Dark / System switch: hidden until theme-switch.js shows it.
+        '<footer class="pfoot"><div class="theme-toggle" role="group" aria-label="Colour theme"'
+        ' hidden><button type="button" data-pref="light" aria-pressed="false">Light</button>'
+        '<button type="button" data-pref="dark" aria-pressed="false">Dark</button>'
+        '<button type="button" data-pref="system" aria-pressed="false">System</button>'
+        "</div></footer>\n"
+        '<script src="/static/portal.js" defer></script>\n'
+        '<script type="module" src="/static/theme-switch.js"></script>\n</body>\n</html>\n')
 
 
 def _heading(view, sub=None) -> str:

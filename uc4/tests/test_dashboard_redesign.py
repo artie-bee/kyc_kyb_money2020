@@ -28,6 +28,11 @@ from web import render, server as console_server                      # noqa: E4
 
 CSS = (ROOT / "web" / "static" / "app.css").read_text(encoding="utf-8")
 JS = (ROOT / "web" / "static" / "app.js").read_text(encoding="utf-8")
+SWITCH = (ROOT / "web" / "static" / "theme-switch.js").read_text(encoding="utf-8")
+KIT = (ROOT / "web" / "static" / "theme.css").read_text(encoding="utf-8")
+
+# The two theme blocks of the colour language (Green & Mint: dark first).
+DARK, LIGHT = ':root, [data-theme="dark"]', '[data-theme="light"]'
 
 
 @pytest.fixture(scope="module", params=["reset", "full"])
@@ -164,7 +169,7 @@ def contrast(a, b):
     return (la + 0.05) / (lb + 0.05)
 
 
-@pytest.mark.parametrize("theme", [":root", ':root[data-theme="dark"]'])
+@pytest.mark.parametrize("theme", [LIGHT, DARK])
 @pytest.mark.parametrize("role", ["analyst", "compliance", "customer", "ready"])
 def test_tile_text_meets_wcag_aa(theme, role):
     block = _block(theme)
@@ -172,7 +177,7 @@ def test_tile_text_meets_wcag_aa(theme, role):
     assert ratio >= 4.5, f"{theme} {role}: {ratio:.2f}"
 
 
-THEMES = {":root": "#ffffff", ':root[data-theme="dark"]': "#171c22"}    # the surface
+THEMES = {LIGHT: "#FFFFFF", DARK: "#0B2119"}    # the kit's surface, --ds-bg-surface
 ROLES = ("analyst", "compliance", "customer", "ready", "neutral")
 
 
@@ -201,15 +206,17 @@ def test_high_and_medium_are_told_apart():
 
 
 def test_the_colour_language_is_defined_once_for_both_themes():
-    light, dark = _block(":root"), _block(':root[data-theme="dark"]')
+    light, dark = _block(LIGHT), _block(DARK)
     for role in ROLES:
         for part in ("", "-ink", "-bg", "-line"):
             assert re.search(r"--role-" + role + part + r":\s*#", light), (role, part)
             assert re.search(r"--role-" + role + part + r":\s*#", dark), (role, part)
-    # the badge tones are those same roles' text shades, not a second palette
+    # the badge tones are those same roles' text shades, not a second palette,
+    # named once for both themes
+    shared = _block(":root")
     for tone, role in (("warn", "analyst"), ("bad", "compliance"), ("info", "customer"),
                        ("ok", "ready")):
-        assert f"--{tone}:var(--role-{role}-ink)" in light
+        assert f"--{tone}:var(--role-{role}-ink)" in shared
     assert render.OWNER_TONE == {"analyst": "warn", "compliance": "bad", "customer": "info",
                                  "system": "neutral"}
     assert render.BAND_TONE["critical"] == "bad" and render.BAND_TONE["low"] == "ok"
@@ -227,13 +234,23 @@ def test_the_dashboard_uses_only_the_shared_colour_variables(conn):
     assert not re.search(r"#[0-9a-fA-F]{3,6}\b", dash_css), "dashboard CSS uses variables only"
 
 
-def test_light_is_the_default_and_dark_still_works():
-    assert "prefers-color-scheme" not in CSS, "the operating system does not pick the theme"
-    assert "color-scheme: light;" in _block(":root")
-    assert "color-scheme: dark;" in _block(':root[data-theme="dark"]')
-    assert "matchMedia" not in JS and '"dark" ? "light" : "dark"' in JS
+def test_light_dark_and_system_from_the_green_and_mint_kit():
+    """The theme is the kit's: Light, Dark or System (the default, following the
+    operating system), set on <html> before the first paint."""
+    assert "color-scheme: light;" in KIT and "color-scheme: dark;" in KIT
+    assert "data-theme" not in JS, "app.js no longer drives the theme"
+    assert 'from "./theme.js"' in SWITCH and "setPreference" in SWITCH
     page = render.page("x", "", "Operations dashboard", conn=None)
-    assert 'id="theme"' in page and 'data-theme="dark"' not in page
+    head = page.split("</head>")[0]
+    # the snippet runs before the first stylesheet, and the kit loads first
+    assert head.index("prefers-color-scheme: light") < head.index("<link")
+    links = re.findall(r'href="/static/([^"]+)"', head)
+    assert links == ["theme.css", "components.css", "app.css"], links
+    for pref in ("light", "dark", "system"):
+        assert f'data-pref="{pref}"' in page
+    assert 'class="theme-toggle" role="group" aria-label="Colour theme" hidden' in page
+    assert '<script type="module" src="/static/theme-switch.js">' in page
+    assert 'data-theme="dark"' not in page, "the server never picks the theme"
 
 
 # ---------------------------------------------------------------------------

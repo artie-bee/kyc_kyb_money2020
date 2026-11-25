@@ -62,14 +62,40 @@
     });
   });
 
-  var btn = document.getElementById("theme");
-  if (btn) btn.addEventListener("click", function () {
+  // The Light / Dark / System switch: the kit's theme.js, inlined so the page
+  // also works opened straight from disk (file://), where modules do not load.
+  var KEY = "ds-theme";
+  var media = window.matchMedia("(prefers-color-scheme: light)");
+  function getPreference() {
+    try { var v = localStorage.getItem(KEY); if (v === "light" || v === "dark") return v; } catch (e) {}
+    return "system";
+  }
+  function applyTheme(pref) {
+    var theme = pref === "system" ? (media.matches ? "light" : "dark") : pref;
     var root = document.documentElement;
-    var now = root.getAttribute("data-theme");
-    var dark = now === "dark" ||
-      (now !== "light" && window.matchMedia("(prefers-color-scheme: dark)").matches);
-    root.setAttribute("data-theme", dark ? "light" : "dark");
+    if (root.getAttribute("data-theme") === theme) return;
+    root.classList.add("ds-theme-switching");
+    root.setAttribute("data-theme", theme);
+    requestAnimationFrame(function () { requestAnimationFrame(function () {
+      root.classList.remove("ds-theme-switching"); }); });
+  }
+  var group = document.querySelector(".theme-toggle");
+  var buttons = group ? group.querySelectorAll("button[data-pref]") : [];
+  function sync() {
+    Array.prototype.forEach.call(buttons, function (b) {
+      b.setAttribute("aria-pressed", String(b.getAttribute("data-pref") === getPreference()));
+    });
+  }
+  Array.prototype.forEach.call(buttons, function (b) {
+    b.addEventListener("click", function () {
+      var pref = b.getAttribute("data-pref");
+      try { pref === "system" ? localStorage.removeItem(KEY) : localStorage.setItem(KEY, pref); } catch (e) {}
+      applyTheme(pref); sync();
+    });
   });
+  media.addEventListener("change", function () { if (getPreference() === "system") applyTheme("system"); });
+  applyTheme(getPreference()); sync();
+  if (group) group.hidden = false;
 
   apply();
 })();

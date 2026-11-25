@@ -372,13 +372,17 @@ def test_the_pages_do_not_need_javascript(journeys):
     customer = Customer(journeys["base"]).open_as("WAL-ONB-0002")
     for path, page in all_pages(customer).items():
         scripts = re.findall(r"<script[^>]*>", page)
-        assert scripts == ['<script src="/static/portal.js" defer>'], (path, scripts)
+        # portal.js, and the Green & Mint theme's two files (set before the first
+        # paint; the Light / Dark / System switch) - all same-origin files
+        assert scripts == ['<script src="/static/theme-init.js">',
+                           '<script src="/static/portal.js" defer>',
+                           '<script type="module" src="/static/theme-switch.js">'], (path, scripts)
         assert not re.search(r"\son[a-z]+=", page), f"{path} has an inline event handler"
         assert "javascript:" not in page
         for form in re.findall(r"<form[^>]*>", page):
             assert 'method="post"' in form, f"{path}: {form}"
-    # the one button that needs the script is hidden until the script shows it
-    assert '<button class="btn btn--quiet" type="button" id="theme" hidden>' in page
+    # the one control that needs a script is hidden until the script shows it
+    assert '<div class="theme-toggle" role="group" aria-label="Colour theme" hidden>' in page
 
 
 # ---------------------------------------------------------------------------

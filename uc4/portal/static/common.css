@@ -3,34 +3,19 @@
    COPIED from web/static/app.css, never linked: the portal must not serve a
    console path. The copy is kept honest by tests/test_portal.py, which fails if
    a token here no longer matches the console's value, so the two products keep
-   one palette, one type ramp and one set of controls.
+   one palette, one type ramp and one set of controls. Both sit on the Green &
+   Mint kit (theme.css and components.css, loaded first).
 
    Portal-only layout lives in portal.css. */
 
 :root {
-  color-scheme: light dark;
+  --fg:var(--ds-text-primary); --fg-mute:var(--ds-text-secondary); --fg-faint:var(--ds-text-tertiary);
+  --bg:var(--ds-bg-canvas); --surface:var(--ds-bg-surface); --surface-2:var(--ds-bg-raised);
+  --line:var(--ds-border-default); --line-soft:var(--ds-border-subtle);
 
-  --n-0:#ffffff; --n-1:#fbfcfd; --n-2:#f4f6f8; --n-3:#e9edf1; --n-4:#dde3e9;
-  --n-5:#c3ccd6; --n-6:#8f9bab; --n-7:#617082;
-  --n-8:#3d4854; --n-9:#232a33; --n-10:#151a20;
+  --accent:var(--ds-accent); --accent-soft:var(--ds-accent-subtle); --accent-line:var(--ds-accent-border);
 
-  --fg:var(--n-9); --fg-mute:var(--n-7); --fg-faint:var(--n-6);
-  --bg:var(--n-2); --surface:var(--n-0); --surface-2:var(--n-1);
-  --line:var(--n-4); --line-soft:var(--n-3);
-
-  --accent:#2d6a4f; --accent-soft:#e9f3ee; --accent-line:#b5d3c3;
-
-  /* The console's colour language (web/static/app.css), copied: amber =
-     analyst, red = compliance, blue = customer, green = ready, grey = neutral.
-     The tones below are those roles' text shades under their older names. */
-  --role-analyst:#b7812a;    --role-analyst-ink:#7a5412;
-  --role-analyst-bg:#fbf6ea; --role-analyst-line:#e9d9b3;
-  --role-compliance:#b5473a;    --role-compliance-ink:#8f2f25;
-  --role-compliance-bg:#fbf0ee; --role-compliance-line:#ebc3bd;
-  --role-customer:#4a6f96;    --role-customer-ink:#2f4e70;
-  --role-customer-bg:#eff3f8; --role-customer-line:#c5d3e3;
-  --role-ready:#3d8a63;    --role-ready-ink:#235c40;
-  --role-ready-bg:#eef6f1; --role-ready-line:#bcd9c8;
+  /* The badge tones are the roles under their older names. */
   --ok:var(--role-ready-ink);        --ok-bg:var(--role-ready-bg);
   --ok-line:var(--role-ready-line);
   --info:var(--role-customer-ink);   --info-bg:var(--role-customer-bg);
@@ -40,41 +25,58 @@
   --bad:var(--role-compliance-ink);  --bad-bg:var(--role-compliance-bg);
   --bad-line:var(--role-compliance-line);
 
-  --r:5px;
-  --mono:"IBM Plex Mono","JetBrains Mono","SFMono-Regular",Consolas,monospace;
-  --sans:Inter,"Segoe UI Variable Text","Segoe UI",system-ui,-apple-system,sans-serif;
+  --r:var(--ds-radius-lg);
+  --mono:"JetBrains Mono","SF Mono","Cascadia Code",Menlo,Consolas,monospace;
+  --sans:var(--ds-font-sans);
 }
 
-/* A real dark theme with its own ramp, not an inverted light one. */
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) {
-    --fg:#dbe2ea; --fg-mute:#93a0b0; --fg-faint:#6d7a8a;
-    --bg:#11151a; --surface:#171c22; --surface-2:#1c2229;
-    --line:#2a323b; --line-soft:#222931;
-    --accent:#7fc4a0; --accent-soft:#16241d; --accent-line:#2f5442;
-    --role-analyst:#d4a55a;    --role-analyst-ink:#e6c486;
-    --role-analyst-bg:#262117; --role-analyst-line:#5a4a2c;
-    --role-compliance:#d98579;    --role-compliance-ink:#eba69d;
-    --role-compliance-bg:#2a1c1a; --role-compliance-line:#5e3833;
-    --role-customer:#86a6c9;    --role-customer-ink:#aec6e0;
-    --role-customer-bg:#1a212b; --role-customer-line:#34465c;
-    --role-ready:#6fbf94;    --role-ready-ink:#9fd8b8;
-    --role-ready-bg:#172620; --role-ready-line:#2f5442;
-  }
+/* The colour language - one meaning everywhere: tiles, charts and badges.
+   amber = analyst, red = compliance / critical, teal = customer,
+   green = ready / low, grey = not scored / system. Taken from the kit's status
+   colours (warning, danger, info, success, neutral). Each role has:
+     --role-X        a vivid mark for bars, slices and strips (3:1 or more
+                     against the page, WCAG 1.4.11);
+     --role-X-ink    text on --role-X-bg, for badges (4.5:1 or more, AA);
+     --role-X-bg / -line   the badge's soft background and border;
+     --tile-X-bg / -fg     a tile's card and its number (4.5:1 or more, AA).
+   Medium risk (--role-analyst-2) is a deeper amber beside high's.
+   Dark first, as in theme.css; the kit's see-through tints are flattened onto
+   the dark surface so every pair can be checked. Defined here once, dark and
+   light; tests/test_dashboard_redesign.py checks every pair. */
+:root, [data-theme="dark"] {
+  --role-analyst:#F2B25C;    --role-analyst-2:#D98A2B;   --role-analyst-ink:#F2B25C;
+  --role-analyst-bg:#273221; --role-analyst-line:#504C2D;
+  --role-compliance:#F28B82; --role-compliance-ink:#F28B82;
+  --role-compliance-bg:#272E26; --role-compliance-line:#504138;
+  --role-customer:#6CC8D6;   --role-customer-ink:#FFFFFF;
+  --role-customer-bg:#173530; --role-customer-line:#285352;
+  --role-ready:#5FD39A;      --role-ready-ink:#FFFFFF;
+  --role-ready-bg:#153628;   --role-ready-line:#245640;
+  --role-neutral:#9FBDB1;    --role-neutral-ink:#D2D8D5;
+  --role-neutral-bg:#162D25; --role-neutral-line:#294238;
+  --tile-analyst-bg:#0B2119;    --tile-analyst-fg:#F2B25C;
+  --tile-compliance-bg:#0B2119; --tile-compliance-fg:#F28B82;
+  --tile-customer-bg:#0B2119;   --tile-customer-fg:#FFFFFF;
+  --tile-ready-bg:#0B2119;      --tile-ready-fg:#FFFFFF;
+  --progress-track:#17362B;
 }
-:root[data-theme="dark"] {
-  --fg:#dbe2ea; --fg-mute:#93a0b0; --fg-faint:#6d7a8a;
-  --bg:#11151a; --surface:#171c22; --surface-2:#1c2229;
-  --line:#2a323b; --line-soft:#222931;
-  --accent:#7fc4a0; --accent-soft:#16241d; --accent-line:#2f5442;
-  --role-analyst:#d4a55a;    --role-analyst-ink:#e6c486;
-  --role-analyst-bg:#262117; --role-analyst-line:#5a4a2c;
-  --role-compliance:#d98579;    --role-compliance-ink:#eba69d;
-  --role-compliance-bg:#2a1c1a; --role-compliance-line:#5e3833;
-  --role-customer:#86a6c9;    --role-customer-ink:#aec6e0;
-  --role-customer-bg:#1a212b; --role-customer-line:#34465c;
-  --role-ready:#6fbf94;    --role-ready-ink:#9fd8b8;
-  --role-ready-bg:#172620; --role-ready-line:#2f5442;
+
+[data-theme="light"] {
+  --role-analyst:#DC6803;    --role-analyst-2:#B54708;   --role-analyst-ink:#B54708;
+  --role-analyst-bg:#FFFAEB; --role-analyst-line:#F5C56B;
+  --role-compliance:#B42318; --role-compliance-ink:#B42318;
+  --role-compliance-bg:#FEF3F2; --role-compliance-line:#F4A9A3;
+  --role-customer:#0E6F78;   --role-customer-ink:#0E6F78;
+  --role-customer-bg:#E6FBF8; --role-customer-line:#2DD4BF;
+  --role-ready:#0F7F50;      --role-ready-ink:#0B6E45;
+  --role-ready-bg:#C9F0DB;   --role-ready-line:#16AB6D;
+  --role-neutral:#5C7A6E;    --role-neutral-ink:#4D6B5F;
+  --role-neutral-bg:#EEF3F1; --role-neutral-line:#E7ECEA;
+  --tile-analyst-bg:#FFFFFF;    --tile-analyst-fg:#B54708;
+  --tile-compliance-bg:#FFFFFF; --tile-compliance-fg:#B42318;
+  --tile-customer-bg:#FFFFFF;   --tile-customer-fg:#0E6F78;
+  --tile-ready-bg:#FFFFFF;      --tile-ready-fg:#0B6E45;
+  --progress-track:#C9F0DB;
 }
 
 * { box-sizing:border-box; }
@@ -83,8 +85,9 @@ html { -webkit-text-size-adjust:100%; }
 body {
   margin:0;
   font-family:var(--sans);
-  font-size:13.5px;
-  line-height:1.5;
+  font-size:14px;
+  line-height:22px;
+  font-weight:var(--ds-weight-regular);
   color:var(--fg);
   background:var(--bg);
   font-variant-numeric:tabular-nums;
@@ -95,20 +98,25 @@ body {
 .ta-r { text-align:right; }
 .muted { color:var(--fg-faint); }
 .mono { font-family:var(--mono); }
-a { color:var(--accent); }
+a { color:var(--ds-text-accent); font-weight:var(--ds-weight-semibold); text-decoration:none; }
+a:hover { text-decoration:underline; }
 
 /* ---------- chips ------------------------------------------------------- */
 
 .chip {
   display:inline-flex; align-items:center; gap:5px; white-space:nowrap;
-  font-size:11.5px; padding:2px 8px 2px 6px; border-radius:3px;
-  border:1px solid var(--line); background:var(--surface-2); color:var(--fg-mute);
+  font-size:12px; line-height:1; font-weight:var(--ds-weight-medium);
+  min-height:22px; padding:3px 9px 3px 7px; border-radius:var(--ds-radius-full);
+  border:1px solid var(--line); background:var(--ds-bg-neutral-tint); color:var(--fg-mute);
 }
-.chip__dot { width:5px; height:5px; border-radius:50%; background:currentColor; flex:none; }
+.chip__dot { width:6px; height:6px; border-radius:50%; background:currentColor; flex:none; }
 .chip--ok   { color:var(--ok);   background:var(--ok-bg);   border-color:var(--ok-line); }
 .chip--info { color:var(--info); background:var(--info-bg); border-color:var(--info-line); }
 .chip--warn { color:var(--warn); background:var(--warn-bg); border-color:var(--warn-line); }
 .chip--bad  { color:var(--bad);  background:var(--bad-bg);  border-color:var(--bad-line); }
+/* Green and teal chips take white text in dark mode; their dot carries the colour. */
+.chip--ok .chip__dot { background:var(--role-ready); }
+.chip--info .chip__dot { background:var(--role-customer); }
 
 /* ---------- banners ----------------------------------------------------- */
 
@@ -117,11 +125,11 @@ a { color:var(--accent); }
   border:1px solid var(--info-line); border-left-width:3px;
   background:var(--info-bg); border-radius:var(--r);
 }
-.note strong { color:var(--fg); font-weight:580; }
+.note strong { color:var(--fg); font-weight:var(--ds-weight-medium); }
 .note--ok   { border-color:var(--ok-line);   background:var(--ok-bg); }
 .note--warn { border-color:var(--warn-line); background:var(--warn-bg); }
 .note--bad  { border-color:var(--bad-line);  background:var(--bad-bg); }
-.note__title { display:block; color:var(--fg); font-weight:600; margin-bottom:5px; font-size:13px; }
+.note__title { display:block; color:var(--fg); font-weight:var(--ds-weight-semibold); margin-bottom:5px; font-size:13px; }
 .note ul { margin:6px 0 0; padding-left:18px; }
 .note li { margin:3px 0; }
 
@@ -135,24 +143,30 @@ form.inline { display:contents; }
 .field .help { font-size:11.5px; color:var(--fg-faint); }
 
 input[type=text], textarea, select {
-  font:inherit; font-size:13px; color:var(--fg);
-  background:var(--surface); border:1px solid var(--line);
-  border-radius:4px; padding:6px 9px; width:100%;
+  font:inherit; font-size:14px; color:var(--fg);
+  background:var(--ds-bg-input); border:1px solid var(--ds-border-input);
+  border-radius:var(--ds-radius-lg); padding:8px 12px; width:100%; min-height:40px;
 }
+input[type=text]:hover, textarea:hover, select:hover { border-color:var(--ds-border-input-hover); }
 input[type=text]:focus, textarea:focus, select:focus {
-  outline:2px solid var(--accent); outline-offset:1px; border-color:var(--accent);
+  outline:2px solid var(--ds-focus-ring); outline-offset:2px;
 }
 textarea { min-height:64px; resize:vertical; }
 
 .btn {
-  font:inherit; font-size:12.5px; font-weight:520;
-  padding:6px 13px; border-radius:4px; cursor:pointer;
-  border:1px solid var(--line); background:var(--surface-2); color:var(--fg);
+  font:inherit; font-size:13px; line-height:1.2; font-weight:var(--ds-weight-semibold);
+  height:auto; min-height:40px; padding:0 16px; border-radius:var(--ds-radius-lg); cursor:pointer;
+  display:inline-flex; align-items:center; justify-content:center; gap:8px;
+  border:1px solid var(--ds-btn-secondary-border); background:var(--ds-btn-secondary-bg);
+  color:var(--ds-btn-secondary-text); text-decoration:none;
 }
-.btn:hover { border-color:var(--n-5); }
-.btn--primary { background:var(--accent); border-color:var(--accent); color:#fff; }
-.btn--primary:hover { filter:brightness(1.08); }
-.btn--bad { color:var(--bad); border-color:var(--bad-line); background:var(--bad-bg); }
+.btn:hover { border-color:var(--ds-border-input-hover); }
+.btn--primary { background:var(--ds-fill-strong); border-color:var(--ds-fill-strong); color:var(--ds-on-fill-strong); }
+.btn--primary:hover { background:var(--ds-fill-strong-hover); border-color:var(--ds-fill-strong-hover); }
+.btn--primary:active { background:var(--ds-fill-strong-active); }
+.btn--bad { color:var(--ds-danger); border-color:var(--ds-danger-border); background:var(--ds-danger-subtle); }
+.btn:disabled { background:var(--ds-bg-disabled); border-color:var(--ds-bg-disabled);
+                color:var(--ds-text-disabled); cursor:not-allowed; }
 .btn--wide { width:100%; }
 .btn-row { display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
 
@@ -165,5 +179,5 @@ textarea { min-height:64px; resize:vertical; }
 
 a:focus-visible, button:focus-visible, input:focus-visible, summary:focus-visible,
 th:focus-visible, select:focus-visible, textarea:focus-visible {
-  outline:2px solid var(--accent); outline-offset:2px; border-radius:3px;
+  outline:2px solid var(--ds-focus-ring); outline-offset:2px; border-radius:3px;
 }

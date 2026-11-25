@@ -1,27 +1,10 @@
-/* Filtering, sorting, row links and the theme toggle.
+/* Filtering, sorting and row links (the theme switch is theme-switch.js).
 
    Every screen is complete in the HTML the server sends. This file narrows,
    reorders and navigates - nothing here fetches, and nothing here decides. With
    the script blocked the console still works; you just sort and filter less. */
 (function () {
   "use strict";
-
-  // ---- theme ------------------------------------------------------------
-  var KEY = "wal-uc4-theme";
-  try {
-    var saved = localStorage.getItem(KEY);
-    if (saved) document.documentElement.setAttribute("data-theme", saved);
-  } catch (e) { /* private window, blocked storage: the default theme is fine */ }
-
-  var themeBtn = document.getElementById("theme");
-  if (themeBtn) themeBtn.addEventListener("click", function () {
-    var root = document.documentElement;
-    // Light unless someone chose dark: the operating system's preference is
-    // not followed, so everyone starts on the same, light console.
-    var next = root.getAttribute("data-theme") === "dark" ? "light" : "dark";
-    root.setAttribute("data-theme", next);
-    try { localStorage.setItem(KEY, next); } catch (e) { /* nothing to do */ }
-  });
 
   // ---- copy the customer link --------------------------------------------
   // Without the script the link is still on the page, selectable by hand.
