@@ -396,7 +396,10 @@ def _same_origin(headers) -> bool:
     origin = headers.get("Origin")
     if not origin or origin == "null":
         return origin is None
-    return urlparse(origin).netloc == (headers.get("Host") or "")
+    # Compare host names only: behind a port-forwarding proxy the browser's Origin
+    # carries the public port (e.g. :7777) while the forwarded Host does not.
+    host = urlparse("//" + (headers.get("Host") or "")).hostname
+    return host is not None and urlparse(origin).hostname == host
 
 
 def _urlencoded(body: bytes) -> dict:
